@@ -99,6 +99,28 @@ func TestVerifyNIP98(t *testing.T) {
 		}
 	})
 
+	// PANEL_URL is the address the operator declared; the browser can only sign
+	// the one it actually opened. When they differ the admin must still get in.
+	t.Run("url the request actually arrived on is accepted", func(t *testing.T) {
+		header := signAuth(t, sk, "http://192.0.2.10:3334/api/admin/stats", "GET", nil, time.Now())
+		r := request(t, header, "GET", "/api/admin/stats", nil)
+		r.Host = "192.0.2.10:3334"
+		if _, err := s.VerifyNIP98(r, nil); err != nil {
+			t.Fatalf("auth event signed for this very request was rejected: %v", err)
+		}
+	})
+
+	t.Run("url behind a tls proxy is accepted", func(t *testing.T) {
+		sk := nostr.GeneratePrivateKey()
+		header := signAuth(t, sk, "https://panel.example.org/api/admin/stats", "GET", nil, time.Now())
+		r := request(t, header, "GET", "/api/admin/stats", nil)
+		r.Host = "panel.example.org"
+		r.Header.Set("X-Forwarded-Proto", "https")
+		if _, err := s.VerifyNIP98(r, nil); err != nil {
+			t.Fatalf("auth event matching the proxied URL was rejected: %v", err)
+		}
+	})
+
 	t.Run("url signed for another path is rejected", func(t *testing.T) {
 		header := signAuth(t, sk, panelURL+"/api/admin/settings", "GET", nil, time.Now())
 		if _, err := s.VerifyNIP98(request(t, header, "GET", "/api/admin/stats", nil), nil); err == nil {

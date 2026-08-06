@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -162,7 +163,14 @@ func (s *Server) admin(next http.HandlerFunc) http.HandlerFunc {
 
 		pubkey, err := s.VerifyNIP98(r, body)
 		if err != nil {
-			writeErr(w, http.StatusUnauthorized, "authentication required")
+			// Why the signature was refused is not a secret, and hiding it makes
+			// a misconfigured PANEL_URL or a skewed clock impossible to diagnose
+			// from the login screen.
+			if errors.Is(err, errNoAuth) {
+				writeErr(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+			writeErr(w, http.StatusUnauthorized, err.Error())
 			return
 		}
 		if !s.store.IsAdmin(pubkey, s.cfg.AdminPubkeys) {

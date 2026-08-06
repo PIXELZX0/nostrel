@@ -54,9 +54,17 @@ func (s *Server) VerifyNIP98(r *http.Request, body []byte) (string, error) {
 		return "", fmt.Errorf("auth event timestamp is out of range")
 	}
 
+	// The browser signs the URL it actually opened, which is only PanelURL when
+	// PANEL_URL is set to the address people really use. Accepting the request's
+	// own URL too keeps a misconfigured PANEL_URL from locking the admin out.
 	u := evt.Tags.GetFirst([]string{"u"})
-	if u == nil || !sameURL(u.Value(), s.cfg.PanelURL+r.URL.Path) {
-		return "", fmt.Errorf("auth event 'u' tag does not match this request")
+	panel := s.cfg.PanelURL + r.URL.Path
+	if u == nil {
+		return "", fmt.Errorf("auth event has no 'u' tag")
+	}
+	if !sameURL(u.Value(), panel) && !sameURL(u.Value(), requestURL(r)) {
+		return "", fmt.Errorf("auth event 'u' tag is %q, but this request arrived as %q (PANEL_URL is %q)",
+			u.Value(), requestURL(r), s.cfg.PanelURL)
 	}
 	method := evt.Tags.GetFirst([]string{"method"})
 	if method == nil || !strings.EqualFold(method.Value(), r.Method) {
@@ -78,6 +86,28 @@ func (s *Server) VerifyNIP98(r *http.Request, body []byte) (string, error) {
 
 func sameURL(a, b string) bool {
 	return strings.EqualFold(strings.TrimRight(a, "/"), strings.TrimRight(b, "/"))
+}
+
+// requestURL rebuilds the absolute URL the browser asked for, trusting the
+// headers a TLS-terminating proxy sets in front of us.
+func requestURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if proto := firstValue(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+		scheme = strings.ToLower(proto)
+	}
+	host := r.Host
+	if fwd := firstValue(r.Header.Get("X-Forwarded-Host")); fwd != "" {
+		host = fwd
+	}
+	return scheme + "://" + host + r.URL.Path
+}
+
+// firstValue takes the first entry of a comma-separated proxy header.
+func firstValue(header string) string {
+	return strings.TrimSpace(strings.Split(header, ",")[0])
 }
 
 // replayCache remembers recently accepted auth events so a captured header

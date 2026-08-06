@@ -28,6 +28,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
+	if s.cfg.AdminPasswordHash == "" {
+		writeErr(w, http.StatusUnauthorized, "password login is off: ADMIN_PASSWORD_HASH is not set")
+		return
+	}
+	if !strings.HasPrefix(s.cfg.AdminPasswordHash, "$2") {
+		writeErr(w, http.StatusUnauthorized,
+			"ADMIN_PASSWORD_HASH is not a bcrypt hash — it must be the output of `nostrel hash-password`, quoted so the shell leaves the $ signs alone")
+		return
+	}
 	if !s.checkPassword(req.Password) {
 		writeErr(w, http.StatusUnauthorized, "wrong password")
 		return

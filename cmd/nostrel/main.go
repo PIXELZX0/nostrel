@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -61,6 +62,10 @@ func main() {
 	}
 	if len(cfg.AdminPubkeys) == 0 && cfg.AdminPasswordHash == "" {
 		logger.Print("WARNING: no ADMIN_PUBKEYS and no ADMIN_PASSWORD_HASH — the admin panel is unreachable")
+	}
+	if cfg.AdminPasswordHash != "" && !strings.HasPrefix(cfg.AdminPasswordHash, "$2") {
+		logger.Print("WARNING: ADMIN_PASSWORD_HASH is not a bcrypt hash — password login will always fail. " +
+			"It must be the output of `nostrel hash-password`, single-quoted so the shell keeps the $ signs")
 	}
 
 	r := relay.New(cfg, st, logger)

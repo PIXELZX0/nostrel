@@ -1,0 +1,16 @@
+# Anything listed here is invisible to the build, which keeps the layer cache
+# from being invalidated by files the binary does not depend on.
+.git
+.github
+.dockerignore
+Dockerfile
+README.md
+
+# local state
+*.db
+*.db-wal
+*.db-shm
+.env
+/nostrel
+/blobs
+/data

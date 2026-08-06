@@ -1,0 +1,17 @@
+services:
+  nostrel:
+    image: ghcr.io/pixelzx0/nostrel:latest
+    # build: .        # 로컬 소스로 빌드하려면 image 줄을 지우고 이 줄을 쓴다
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # 왼쪽이 호스트 포트. .env에서 RELAY_PORT를 바꿨다면 오른쪽도 같이 바꾼다.
+      - "3334:3334"
+    volumes:
+      # DB(/data/nostrel.db)와 업로드 파일(/data/blobs)이 같은 볼륨에 들어간다.
+      # 이미지가 uid 10001로 돌기 때문에 호스트 디렉터리를 직접 물리는 것보다
+      # 이름 있는 볼륨이 권한 문제가 없다.
+      - nostrel-data:/data
+
+volumes:
+  nostrel-data:

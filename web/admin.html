@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>relay admin</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></symbol>
+  <symbol id="i-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M21 4H3M21 12H3M21 20H3"/><circle cx="9" cy="4" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="20" r="2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-users-round" viewBox="0 0 24 24"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></symbol>
+  <symbol id="i-at" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8M8 11h8M8 15h5"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-ticket" viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v14"/></symbol>
+</svg>
+
+<div class="login" id="login-card">
+  <header>
+    <h1>관리자</h1>
+    <p class="muted">NIP-07 서명 로그인 또는 관리자 비밀번호</p>
+  </header>
+  <section class="card">
+    <h2>로그인</h2>
+    <button id="login-nostr">확장으로 서명 로그인</button>
+    <div class="row">
+      <input id="password" class="grow" type="password" placeholder="관리자 비밀번호" autocomplete="current-password">
+      <button id="login-password" class="secondary">로그인</button>
+    </div>
+    <p id="login-error" class="error"></p>
+  </section>
+</div>
+
+<div class="app" id="panel" hidden>
+  <aside class="sidebar">
+    <div class="brand"><svg class="i"><use href="#i-zap"/></svg>관리자</div>
+    <nav class="nav">
+      <a href="#sec-stats"><svg class="i"><use href="#i-dashboard"/></svg>현황</a>
+      <a href="#sec-payment"><svg class="i"><use href="#i-card"/></svg>결제 백엔드</a>
+      <a href="#sec-storage"><svg class="i"><use href="#i-folder"/></svg>파일 저장소</a>
+      <a href="#sec-settings"><svg class="i"><use href="#i-settings"/></svg>요금 · 릴레이 정보</a>
+      <a href="#sec-accounts"><svg class="i"><use href="#i-users"/></svg>계정</a>
+      <a href="#sec-invites"><svg class="i"><use href="#i-ticket"/></svg>초대 코드</a>
+      <a href="#sec-groups"><svg class="i"><use href="#i-users-round"/></svg>그룹</a>
+      <a href="#sec-nip05"><svg class="i"><use href="#i-at"/></svg>NIP-05 주소</a>
+      <a href="#sec-media"><svg class="i"><use href="#i-image"/></svg>미디어</a>
+      <a href="#sec-payments"><svg class="i"><use href="#i-receipt"/></svg>결제 내역</a>
+    </nav>
+    <div class="nav-spacer"></div>
+    <nav class="nav">
+      <a href="#" id="logout" class="nav-out"><svg class="i"><use href="#i-logout"/></svg>로그아웃</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <h1>현황</h1>
+
+    <section class="card" id="sec-stats">
+      <h2>현황</h2>
+      <table id="stats" class="kv"></table>
+    </section>
+
+    <section class="card" id="sec-payment">
+      <h2>결제 백엔드</h2>
+      <div class="row">
+        <label>백엔드
+          <select id="payment-provider">
+            <option value="lnbits">LNbits</option>
+            <option value="nwc">NWC (Nostr Wallet Connect)</option>
+            <option value="mock">mock (테스트 전용)</option>
+          </select>
+        </label>
+        <span id="provider-warning" class="bad small"></span>
+      </div>
+      <div id="lnbits-fields">
+        <label class="stack">LNbits 주소
+          <input id="set-lnbits_url" placeholder="https://lnbits.example.com" spellcheck="false"></label>
+        <label class="stack">인보이스/읽기 키
+          <input id="set-lnbits_invoice_key" placeholder="인보이스 키" spellcheck="false" autocomplete="off"></label>
+      </div>
+      <div id="nwc-fields" hidden>
+        <label class="stack">연결 문자열
+          <input id="set-nwc_uri" placeholder="nostr+walletconnect://..." spellcheck="false" autocomplete="off"></label>
+      </div>
+      <div class="row">
+        <button id="test-payment" class="secondary">연결 테스트</button>
+        <button id="save-payment">저장</button>
+        <span id="payment-msg" class="muted small"></span>
+      </div>
+      <p class="muted small">키는 서버에만 저장되고 화면에는 끝 4자리만 표시됩니다. 그대로 두면 기존 값이 유지됩니다.</p>
+    </section>
+
+    <section class="card" id="sec-storage">
+      <h2>파일 저장소</h2>
+      <div class="row">
+        <label>저장 위치
+          <select id="storage-backend">
+            <option value="local">내장 (서버 디스크)</option>
+            <option value="s3">S3 호환 (S3 · MinIO · R2 · B2)</option>
+          </select>
+        </label>
+        <span id="storage-current" class="muted small"></span>
+      </div>
+      <div id="local-fields">
+        <label class="stack">저장 경로
+          <input id="set-local_path" placeholder="./blobs" spellcheck="false"></label>
+      </div>
+      <div id="s3-fields" hidden>
+        <label class="stack">엔드포인트
+          <input id="set-s3_endpoint" placeholder="https://s3.amazonaws.com 또는 minio.example.com:9000" spellcheck="false"></label>
+        <div class="row">
+          <label class="stack grow">버킷 <input id="set-s3_bucket" spellcheck="false"></label>
+          <label class="stack">리전 <input id="set-s3_region" placeholder="us-east-1" spellcheck="false"></label>
+        </div>
+        <label class="stack">키 접두사 (선택)
+          <input id="set-s3_prefix" placeholder="media/" spellcheck="false"></label>
+        <div class="row">
+          <label class="stack grow">액세스 키 <input id="set-s3_access_key" spellcheck="false" autocomplete="off"></label>
+          <label class="stack grow">시크릿 키 <input id="set-s3_secret_key" spellcheck="false" autocomplete="off"></label>
+        </div>
+        <label class="stack">공개 URL (선택, 설정 시 다운로드를 이 주소로 리다이렉트)
+          <input id="set-s3_public_url" placeholder="https://cdn.example.com/bucket" spellcheck="false"></label>
+      </div>
+      <div class="row">
+        <button id="test-storage" class="secondary">연결 테스트</button>
+        <button id="save-storage">저장</button>
+        <span id="storage-msg" class="muted small"></span>
+      </div>
+      <p class="muted small">저장 위치를 바꿔도 기존 파일은 옮겨지지 않습니다. 옮기려면 <code>nostrel migrate-blobs &lt;기존경로&gt;</code>를 실행하세요.</p>
+    </section>
+
+    <section class="card" id="sec-settings">
+      <h2>요금 · 릴레이 정보</h2>
+      <div id="settings"></div>
+      <p class="muted small">짧은 이름 할증은 <code>길이:배수</code> 목록입니다. 예를 들어 <code>1:20,2:10,3:5</code>는
+        한 글자 이름을 도메인 가격의 20배로 팝니다. 비워두면 할증이 없습니다.</p>
+      <div class="row"><button id="save-settings">저장</button><span id="settings-msg" class="muted small"></span></div>
+    </section>
+
+    <section class="card" id="sec-accounts">
+      <h2>계정</h2>
+      <div class="row">
+        <input id="search" class="grow" placeholder="pubkey 또는 메모 검색">
+        <button id="do-search" class="secondary">검색</button>
+      </div>
+      <div class="row">
+        <input id="new-pubkey" class="grow" placeholder="수동 추가할 pubkey (hex)" spellcheck="false">
+        <label>기간 <input id="new-days" type="number" value="30"> 일</label>
+        <label>용량 <input id="new-mb" type="number" value="100"> MB</label>
+        <button id="add-account">추가</button>
+      </div>
+      <div class="table-scroll"><table id="accounts"></table></div>
+    </section>
+
+    <section class="card" id="sec-invites">
+      <h2>초대 코드 (NIP-43)</h2>
+      <div class="row">
+        <input id="new-invite-note" class="grow" placeholder="메모 (예: 베타 초대)">
+        <label>기간 <input id="new-invite-days" type="number" value="30"> 일</label>
+        <label>용량 <input id="new-invite-mb" type="number" value="100"> MB</label>
+        <label>사용 <input id="new-invite-uses" type="number" value="1"> 회 (0 = 무제한)</label>
+        <label>만료 <input id="new-invite-expires" type="number" value="0"> 일 (0 = 없음)</label>
+        <button id="add-invite">발급</button>
+      </div>
+      <div class="table-scroll"><table id="invites"></table></div>
+      <p class="muted small">초대 코드는 <strong>가입비를 면제</strong>합니다. 코드를 클릭하면 복사됩니다.
+        <code>RELAY_SECRET_KEY</code>가 설정돼 있으면 클라이언트가 kind 28934로 직접 가입할 수도 있습니다.</p>
+    </section>
+
+    <section class="card" id="sec-groups">
+      <h2>그룹 (용량 공유)</h2>
+      <div class="row">
+        <input id="group-search" class="grow" placeholder="그룹 이름 · 소유자 · 메모 검색">
+        <button id="do-group-search" class="secondary">검색</button>
+      </div>
+      <div class="row">
+        <input id="new-group-name" class="grow" placeholder="새 그룹 이름">
+        <input id="new-group-owner" class="grow" placeholder="소유자 pubkey (hex)" spellcheck="false">
+        <label>기간 <input id="new-group-days" type="number" value="30"> 일</label>
+        <label>용량 <input id="new-group-mb" type="number" value="1000"> MB</label>
+        <button id="add-group">추가</button>
+      </div>
+      <div class="table-scroll"><table id="groups"></table></div>
+      <div id="group-members"></div>
+      <p class="muted small">멤버는 자기 계정으로 먼저 쓰고, 개인 용량이 없거나 다 쓴 뒤에만 그룹 용량을 씁니다.
+        한 pubkey는 그룹 하나에만 속할 수 있습니다.</p>
+    </section>
+
+    <section class="card" id="sec-nip05">
+      <h2>NIP-05 도메인</h2>
+      <div class="row">
+        <input id="new-domain" class="grow" placeholder="도메인 (예: example.com)" spellcheck="false">
+        <label>가격 <input id="new-domain-price" type="number" value="1000"> sats</label>
+        <label>기간 <input id="new-domain-days" type="number" value="365"> 일</label>
+        <button id="add-domain">추가</button>
+      </div>
+      <div class="table-scroll"><table id="domains"></table></div>
+      <p class="muted small">도메인의 DNS를 이 서버로 향하게 하고, 리버스 프록시가 Host 헤더를 그대로 넘겨야
+        <code>/.well-known/nostr.json</code>이 그 도메인의 이름을 응답합니다.</p>
+
+      <h3>차단한 이름</h3>
+      <div class="row">
+        <input id="new-blocked" class="grow" placeholder="판매 금지할 이름 (예: admin)" spellcheck="false">
+        <input id="new-blocked-reason" class="grow" placeholder="사유 (선택)">
+        <button id="add-blocked" class="secondary">차단</button>
+      </div>
+      <div id="blocked-names"></div>
+
+      <h3>판매된 이름</h3>
+      <div class="row">
+        <input id="name-search" class="grow" placeholder="이름 또는 pubkey 검색">
+        <button id="do-name-search" class="secondary">검색</button>
+      </div>
+      <div class="row">
+        <input id="new-name" class="grow" placeholder="이름" spellcheck="false">
+        <input id="new-name-domain" class="grow" placeholder="도메인" spellcheck="false">
+        <input id="new-name-pubkey" class="grow" placeholder="pubkey (hex)" spellcheck="false">
+        <label>기간 <input id="new-name-days" type="number" value="365"> 일 (0 = 무기한)</label>
+        <button id="add-name">발급</button>
+      </div>
+      <div class="table-scroll"><table id="names"></table></div>
+    </section>
+
+    <section class="card" id="sec-media">
+      <h2>미디어</h2>
+      <div id="blob-reports"></div>
+      <div class="table-scroll"><table id="blobs"></table></div>
+    </section>
+
+    <section class="card" id="sec-payments">
+      <h2>결제 내역</h2>
+      <div class="table-scroll"><table id="payments"></table></div>
+    </section>
+  </main>
+</div>
+<script src="/static/theme.js"></script>
+<script src="/static/nip98.js"></script>
+<script src="/static/admin.js"></script>
+</body>
+</html>

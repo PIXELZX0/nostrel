@@ -7,7 +7,7 @@ const MB = 1024 * 1024;
 let mode = null;
 let settings = null;
 
-const fmtDate = (unix) => (unix ? new Date(unix * 1000).toLocaleString() : "무기한");
+const fmtDate = (unix) => (unix ? new Date(unix * 1000).toLocaleString() : t("무기한"));
 const fmtMB = (bytes) => (bytes / MB).toFixed(1);
 const fmtBytes = (n) =>
   n >= MB ? (n / MB).toFixed(1) + " MB" : n >= 1024 ? (n / 1024).toFixed(1) + " KB" : n + " B";
@@ -38,12 +38,12 @@ async function loadAll() {
 async function loadStats() {
   const s = await api("/api/admin/stats");
   $("stats").innerHTML = [
-    ["계정", `${s.accounts} (활성 ${s.active_accounts})`],
-    ["이벤트", s.events],
-    ["저장량", `${fmtMB(s.stored_bytes)} MB`],
-    ["결제", `${s.paid_payments}건 / ${s.sats_collected.toLocaleString()} sats`],
-    ["그룹", s.groups],
-    ["NIP-05 주소", s.nip05_names],
+    [t("계정"), t("{0} (활성 {1})", s.accounts, s.active_accounts)],
+    [t("이벤트"), s.events],
+    [t("저장량"), `${fmtMB(s.stored_bytes)} MB`],
+    [t("결제"), t("{0}건 / {1} sats", s.paid_payments, s.sats_collected.toLocaleString())],
+    [t("그룹"), s.groups],
+    [t("NIP-05 주소"), s.nip05_names],
   ].map(([k, v]) => `<tr><th>${k}</th><td class="num">${v}</td></tr>`).join("");
 }
 
@@ -86,8 +86,8 @@ async function loadSettings() {
     // stylesheet is already using
     .map(([key, label, type, fallback]) =>
       type === "checkbox"
-        ? `<label><input id="set-${key}" type="checkbox"${settings[key] ? " checked" : ""}>${label}</label>`
-        : `<label class="stack">${label}
+        ? `<label><input id="set-${key}" type="checkbox"${settings[key] ? " checked" : ""}>${t(label)}</label>`
+        : `<label class="stack">${t(label)}
              <input id="set-${key}" type="${type}" value="${esc(settings[key] ?? "") || fallback || ""}"></label>`)
     .join("");
   renderPayment();
@@ -105,7 +105,7 @@ async function saveSettings() {
   }
   try {
     settings = await api("/api/admin/settings", "PUT", payload);
-    $("settings-msg").textContent = "저장됨";
+    $("settings-msg").textContent = t("저장됨");
     renderPayment();
     applyTheme(settings);
   } catch (err) {
@@ -130,7 +130,7 @@ function togglePaymentFields() {
   $("lnbits-fields").hidden = provider !== "lnbits";
   $("nwc-fields").hidden = provider !== "nwc";
   $("provider-warning").textContent =
-    provider === "mock" ? "mock은 결제 없이 인보이스가 스스로 정산됩니다. 운영에서 쓰지 마세요." : "";
+    provider === "mock" ? t("mock은 결제 없이 인보이스가 스스로 정산됩니다. 운영에서 쓰지 마세요.") : "";
 }
 
 function paymentPayload() {
@@ -143,7 +143,7 @@ function paymentPayload() {
 }
 
 async function testPayment() {
-  $("payment-msg").textContent = "테스트 중…";
+  $("payment-msg").textContent = t("테스트 중…");
   try {
     const res = await api("/api/admin/payments/test", "POST", paymentPayload());
     $("payment-msg").innerHTML = res.ok
@@ -158,7 +158,7 @@ async function savePayment() {
   try {
     settings = await api("/api/admin/settings", "PUT", paymentPayload());
     renderPayment();
-    $("payment-msg").innerHTML = '<span class="ok">저장됨 — 새 인보이스부터 이 백엔드를 씁니다.</span>';
+    $("payment-msg").innerHTML = `<span class="ok">${t("저장됨 — 새 인보이스부터 이 백엔드를 씁니다.")}</span>`;
   } catch (err) {
     $("payment-msg").innerHTML = `<span class="bad">${esc(err.message)}</span>`;
   }
@@ -169,7 +169,7 @@ async function loadAccounts() {
   const accounts = await api("/api/admin/accounts?q=" + q);
   $("accounts").innerHTML =
     cols("", 110, 190, 160, "", 110) +
-    `<tr><th>pubkey</th><th>상태</th><th>만료</th><th>사용/할당(MB)</th><th>메모</th><th></th></tr>` +
+    `<tr><th>pubkey</th><th>${t("상태")}</th><th>${t("만료")}</th><th>${t("사용/할당(MB)")}</th><th>${t("메모")}</th><th></th></tr>` +
     accounts.map((a) => `
       <tr data-pubkey="${a.pubkey}">
         <td><code title="${a.pubkey}">${a.pubkey.slice(0, 12)}…</code></td>
@@ -182,9 +182,9 @@ async function loadAccounts() {
         <td><input class="f-expires" type="datetime-local" value="${toLocalInput(a.expires_at)}"></td>
         <td class="num">${fmtMB(a.used_bytes)} / <input class="f-quota" type="number" value="${fmtMB(a.quota_bytes)}"></td>
         <td><input class="f-note" value="${esc(a.note)}"></td>
-        <td><button class="save link">저장</button> <button class="del link danger">삭제</button></td>
+        <td><button class="save link">${t("저장")}</button> <button class="del link danger">${t("삭제")}</button></td>
       </tr>`).join("") +
-    (accounts.length ? "" : `<tr><td colspan="6" class="empty">계정 없음</td></tr>`);
+    (accounts.length ? "" : `<tr><td colspan="6" class="empty">${t("계정 없음")}</td></tr>`);
 }
 
 function toLocalInput(unix) {
@@ -231,8 +231,8 @@ function renderStorage() {
   toggleStorageFields();
   $("storage-current").textContent =
     settings.storage_backend === "s3"
-      ? `현재: ${settings.s3_bucket || "?"} (${settings.s3_endpoint || "?"})`
-      : `현재: ${settings.local_path || "기본 경로"}`;
+      ? t("현재: {0} ({1})", settings.s3_bucket || "?", settings.s3_endpoint || "?")
+      : t("현재: {0}", settings.local_path || t("기본 경로"));
 }
 
 function toggleStorageFields() {
@@ -248,7 +248,7 @@ function storagePayload() {
 }
 
 async function testStorage() {
-  $("storage-msg").textContent = "테스트 중…";
+  $("storage-msg").textContent = t("테스트 중…");
   try {
     const res = await api("/api/admin/storage/test", "POST", storagePayload());
     $("storage-msg").innerHTML = res.ok
@@ -264,7 +264,7 @@ async function saveStorage() {
     settings = await api("/api/admin/settings", "PUT", storagePayload());
     renderStorage();
     $("storage-msg").innerHTML =
-      '<span class="ok">저장됨 — 새 업로드부터 이 위치를 씁니다. 기존 파일은 migrate-blobs로 옮기세요.</span>';
+      `<span class="ok">${t("저장됨 — 새 업로드부터 이 위치를 씁니다. 기존 파일은 migrate-blobs로 옮기세요.")}</span>`;
     loadBlobs();
   } catch (err) {
     $("storage-msg").innerHTML = `<span class="bad">${esc(err.message)}</span>`;
@@ -277,18 +277,18 @@ async function loadInvites() {
   const invites = await api("/api/admin/invites");
   $("invites").innerHTML =
     cols(160, "", 90, 90, 100, 170, 90) +
-    `<tr><th>코드</th><th>메모</th><th>기간</th><th>용량</th><th>사용</th><th>만료</th><th></th></tr>` +
+    `<tr><th>${t("코드")}</th><th>${t("메모")}</th><th>${t("기간")}</th><th>${t("용량")}</th><th>${t("사용")}</th><th>${t("만료")}</th><th></th></tr>` +
     invites.map((inv) => `
       <tr data-invite="${esc(inv.code)}">
-        <td><code class="copy" title="클릭하면 복사">${esc(inv.code)}</code></td>
+        <td><code class="copy" title="${t("클릭하면 복사")}">${esc(inv.code)}</code></td>
         <td>${esc(inv.note)}</td>
-        <td class="num">${inv.period_days}일</td>
+        <td class="num">${t("{0}일", inv.period_days)}</td>
         <td class="num">${inv.quota_mb} MB</td>
         <td class="num ${inv.max_uses && inv.used >= inv.max_uses ? "bad" : ""}">${inv.used} / ${inv.max_uses || "∞"}</td>
-        <td class="small">${inv.expires_at ? fmtDate(inv.expires_at) : "없음"}</td>
-        <td><button class="del link danger">삭제</button></td>
+        <td class="small">${inv.expires_at ? fmtDate(inv.expires_at) : t("없음")}</td>
+        <td><button class="del link danger">${t("삭제")}</button></td>
       </tr>`).join("") +
-    (invites.length ? "" : `<tr><td colspan="7" class="empty">초대 코드 없음</td></tr>`);
+    (invites.length ? "" : `<tr><td colspan="7" class="empty">${t("초대 코드 없음")}</td></tr>`);
 }
 
 async function addInvite() {
@@ -314,12 +314,12 @@ async function loadGroups() {
   const groups = await api("/api/admin/groups?q=" + q);
   $("groups").innerHTML =
     cols("", 130, 70, 110, 190, 160, "", 110) +
-    `<tr><th>이름</th><th>소유자</th><th>멤버</th><th>상태</th><th>만료</th><th>사용/할당(MB)</th><th>메모</th><th></th></tr>` +
+    `<tr><th>${t("이름")}</th><th>${t("소유자")}</th><th>${t("멤버")}</th><th>${t("상태")}</th><th>${t("만료")}</th><th>${t("사용/할당(MB)")}</th><th>${t("메모")}</th><th></th></tr>` +
     groups.map((g) => `
       <tr data-group="${esc(g.id)}" data-owner="${esc(g.owner)}">
         <td><input class="f-name" value="${esc(g.name)}"></td>
         <td><code title="${esc(g.owner)}">${esc(g.owner.slice(0, 10))}…</code></td>
-        <td><button class="members link">${g.members}명</button></td>
+        <td><button class="members link">${t("{0}명", g.members)}</button></td>
         <td>
           <select class="f-status">
             <option value="active"${g.status === "active" ? " selected" : ""}>active</option>
@@ -329,9 +329,9 @@ async function loadGroups() {
         <td><input class="f-expires" type="datetime-local" value="${toLocalInput(g.expires_at)}"></td>
         <td class="num">${fmtMB(g.used_bytes)} / <input class="f-quota" type="number" value="${fmtMB(g.quota_bytes)}"></td>
         <td><input class="f-note" value="${esc(g.note)}"></td>
-        <td><button class="save link">저장</button> <button class="del link danger">삭제</button></td>
+        <td><button class="save link">${t("저장")}</button> <button class="del link danger">${t("삭제")}</button></td>
       </tr>`).join("") +
-    (groups.length ? "" : `<tr><td colspan="8" class="empty">그룹 없음</td></tr>`);
+    (groups.length ? "" : `<tr><td colspan="8" class="empty">${t("그룹 없음")}</td></tr>`);
 
   if (openGroup && groups.some((g) => g.id === openGroup)) {
     await loadMembers(openGroup);
@@ -345,10 +345,10 @@ async function loadMembers(groupID) {
   openGroup = groupID;
   const members = await api("/api/admin/groups/" + groupID + "/members");
   $("group-members").innerHTML = `
-    <h3>멤버 <code>${esc(groupID.slice(0, 10))}…</code></h3>
+    <h3>${t("멤버")} <code>${esc(groupID.slice(0, 10))}…</code></h3>
     <div class="row">
-      <input id="new-member" class="grow" placeholder="추가할 pubkey (hex)" spellcheck="false">
-      <button id="add-member">추가</button>
+      <input id="new-member" class="grow" placeholder="${t("추가할 pubkey (hex)")}" spellcheck="false">
+      <button id="add-member">${t("추가")}</button>
     </div>
     <div class="chips">` +
     members.map((m) => `
@@ -357,7 +357,7 @@ async function loadMembers(groupID) {
         <span class="sub">${fmtDate(m.added_at)}</span>
         <svg class="i member-del"><use href="#i-x"/></svg>
       </span>`).join("") +
-    (members.length ? "" : `<span class="muted small">멤버 없음</span>`) + `</div>`;
+    (members.length ? "" : `<span class="muted small">${t("멤버 없음")}</span>`) + `</div>`;
 
   $("add-member").onclick = async () => {
     const pubkey = $("new-member").value.trim().toLowerCase();
@@ -386,7 +386,7 @@ async function saveGroupRow(tr) {
 
 async function addGroup() {
   const owner = $("new-group-owner").value.trim().toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(owner)) return alert("소유자 pubkey를 64자리 hex로 입력하세요.");
+  if (!/^[0-9a-f]{64}$/.test(owner)) return alert(t("소유자 pubkey를 64자리 hex로 입력하세요."));
   const days = Number($("new-group-days").value) || 0;
   // the id is ours to pick; a random hex string keeps it unguessable, which
   // matters because knowing it is enough to read the group's usage
@@ -412,7 +412,7 @@ async function loadDomains() {
   const domains = await api("/api/admin/nip05/domains");
   $("domains").innerHTML =
     cols("", 80, 120, 100, "", 110) +
-    `<tr><th>도메인</th><th>판매중</th><th>가격 (sats)</th><th>기간 (일)</th><th>메모</th><th></th></tr>` +
+    `<tr><th>${t("도메인")}</th><th>${t("판매중")}</th><th>${t("가격 (sats)")}</th><th>${t("기간 (일)")}</th><th>${t("메모")}</th><th></th></tr>` +
     domains.map((d) => `
       <tr data-domain="${esc(d.domain)}">
         <td><code>${esc(d.domain)}</code></td>
@@ -420,9 +420,9 @@ async function loadDomains() {
         <td><input class="f-price" type="number" value="${d.price_sats}"></td>
         <td><input class="f-days" type="number" value="${d.period_days}"></td>
         <td><input class="f-note" value="${esc(d.note)}"></td>
-        <td><button class="save link">저장</button> <button class="del link danger">삭제</button></td>
+        <td><button class="save link">${t("저장")}</button> <button class="del link danger">${t("삭제")}</button></td>
       </tr>`).join("") +
-    (domains.length ? "" : `<tr><td colspan="6" class="empty">도메인 없음</td></tr>`);
+    (domains.length ? "" : `<tr><td colspan="6" class="empty">${t("도메인 없음")}</td></tr>`);
 }
 
 async function saveDomainRow(tr) {
@@ -437,7 +437,7 @@ async function saveDomainRow(tr) {
 
 async function addDomain() {
   const domain = $("new-domain").value.trim().toLowerCase();
-  if (!domain) return alert("도메인을 입력하세요.");
+  if (!domain) return alert(t("도메인을 입력하세요."));
   await api("/api/admin/nip05/domains/" + encodeURIComponent(domain), "PUT", {
     enabled: true,
     price_sats: Number($("new-domain-price").value) || 0,
@@ -457,12 +457,12 @@ async function loadBlockedNames() {
           ${b.reason ? `<span class="sub">${esc(b.reason)}</span>` : ""}
           <svg class="i unblock"><use href="#i-x"/></svg>
         </span>`).join("") + `</div>`
-    : `<p class="muted small">차단한 이름 없음</p>`;
+    : `<p class="muted small">${t("차단한 이름 없음")}</p>`;
 }
 
 async function addBlockedName() {
   const name = $("new-blocked").value.trim().toLowerCase();
-  if (!name) return alert("이름을 입력하세요.");
+  if (!name) return alert(t("이름을 입력하세요."));
   await api("/api/admin/nip05/blocked/" + encodeURIComponent(name), "PUT", {
     reason: $("new-blocked-reason").value.trim(),
   });
@@ -476,18 +476,18 @@ async function loadNames() {
   const names = await api("/api/admin/nip05/names?q=" + q);
   $("names").innerHTML =
     cols("", "", 190, 80, 110) +
-    `<tr><th>주소</th><th>pubkey</th><th>만료</th><th>무기한</th><th></th></tr>` +
+    `<tr><th>${t("주소")}</th><th>pubkey</th><th>${t("만료")}</th><th>${t("무기한")}</th><th></th></tr>` +
     names.map((n) => `
       <tr data-domain="${esc(n.domain)}" data-name="${esc(n.name)}">
         <td><code>${esc(n.name)}@${esc(n.domain)}</code>
-            ${!n.permanent && !n.expires_at ? '<span class="bad small"> 결제 대기</span>' : ""}</td>
+            ${!n.permanent && !n.expires_at ? `<span class="bad small"> ${t("결제 대기")}</span>` : ""}</td>
         <td><input class="f-pubkey" value="${esc(n.pubkey)}" spellcheck="false"
                    title="${esc(n.pubkey)}"></td>
         <td><input class="f-expires" type="datetime-local" value="${toLocalInput(n.expires_at)}"></td>
         <td><input class="f-permanent" type="checkbox"${n.permanent ? " checked" : ""}></td>
-        <td><button class="save link">저장</button> <button class="del link danger">삭제</button></td>
+        <td><button class="save link">${t("저장")}</button> <button class="del link danger">${t("삭제")}</button></td>
       </tr>`).join("") +
-    (names.length ? "" : `<tr><td colspan="5" class="empty">판매된 이름 없음</td></tr>`);
+    (names.length ? "" : `<tr><td colspan="5" class="empty">${t("판매된 이름 없음")}</td></tr>`);
 }
 
 async function saveNameRow(tr) {
@@ -507,7 +507,7 @@ async function addName() {
   const name = $("new-name").value.trim().toLowerCase();
   const domain = $("new-name-domain").value.trim().toLowerCase();
   const pubkey = $("new-name-pubkey").value.trim().toLowerCase();
-  if (!name || !domain) return alert("이름과 도메인을 입력하세요.");
+  if (!name || !domain) return alert(t("이름과 도메인을 입력하세요."));
   if (!/^[0-9a-f]{64}$/.test(pubkey)) return alert("64자리 hex pubkey를 입력하세요.");
 
   const days = Number($("new-name-days").value) || 0;
@@ -530,36 +530,36 @@ async function loadBlobs() {
   ]);
 
   $("blob-reports").innerHTML = reports.length
-    ? `<p class="bad small">신고된 파일 ${reports.length}건</p>` +
+    ? `<p class="bad small">${t("신고된 파일 {0}건", reports.length)}</p>` +
       reports.map((rep) => `
         <div class="row" data-report="${rep.value}">
           <code>${rep.value.slice(0, 12)}…</code>
           <span class="muted small grow">${esc(rep.reason)}</span>
-          <button class="dismiss secondary">신고 무시</button>
+          <button class="dismiss secondary">${t("신고 무시")}</button>
         </div>`).join("")
     : "";
 
   $("blobs").innerHTML =
     cols("", 130, 90, 130, 170, 90) +
-    `<tr><th>파일</th><th>업로더</th><th>크기</th><th>형식</th><th>올린 시각</th><th></th></tr>` +
+    `<tr><th>${t("파일")}</th><th>${t("업로더")}</th><th>${t("크기")}</th><th>${t("형식")}</th><th>${t("올린 시각")}</th><th></th></tr>` +
     blobs.map((b) => `
       <tr data-blob="${b.sha256}">
         <td><a href="${esc(b.url)}" target="_blank" rel="noopener"><code>${b.sha256.slice(0, 12)}…</code></a>
-            ${b.reported ? '<span class="bad small"> 신고됨</span>' : ""}</td>
+            ${b.reported ? `<span class="bad small"> ${t("신고됨")}</span>` : ""}</td>
         <td><code>${b.pubkey.slice(0, 10)}…</code></td>
         <td class="num">${fmtBytes(b.size)}</td>
         <td class="small">${esc(b.type || "")}</td>
         <td class="small">${fmtDate(b.uploaded)}</td>
-        <td><button class="blob-del link danger">삭제</button></td>
+        <td><button class="blob-del link danger">${t("삭제")}</button></td>
       </tr>`).join("") +
-    (blobs.length ? "" : `<tr><td colspan="6" class="empty">업로드된 파일 없음</td></tr>`);
+    (blobs.length ? "" : `<tr><td colspan="6" class="empty">${t("업로드된 파일 없음")}</td></tr>`);
 }
 
 async function loadPayments() {
   const payments = await api("/api/admin/payments?limit=50");
   $("payments").innerHTML =
     cols(170, 160, "", 110, 90) +
-    `<tr><th>시각</th><th>pubkey</th><th>종류</th><th>sats</th><th>상태</th></tr>` +
+    `<tr><th>${t("시각")}</th><th>pubkey</th><th>${t("종류")}</th><th>sats</th><th>${t("상태")}</th></tr>` +
     payments.map((p) => `
       <tr>
         <td class="small">${fmtDate(p.created_at)}</td>
@@ -568,11 +568,11 @@ async function loadPayments() {
         <td class="num">${p.sats.toLocaleString()}</td>
         <td class="${p.status === "paid" ? "ok" : p.status === "expired" ? "bad" : "muted"}">${p.status}</td>
       </tr>`).join("") +
-    (payments.length ? "" : `<tr><td colspan="5" class="empty">결제 없음</td></tr>`);
+    (payments.length ? "" : `<tr><td colspan="5" class="empty">${t("결제 없음")}</td></tr>`);
 }
 
 $("login-nostr").onclick = async () => {
-  if (!window.nostr) return ($("login-error").textContent = "NIP-07 확장이 없습니다.");
+  if (!window.nostr) return ($("login-error").textContent = t("NIP-07 확장이 없습니다."));
   mode = "nostr";
   try {
     await api("/api/admin/session");
@@ -632,7 +632,7 @@ $("accounts").addEventListener("click", (e) => {
   const tr = e.target.closest("tr[data-pubkey]");
   if (!tr) return;
   if (e.target.classList.contains("save")) saveRow(tr).catch((err) => alert(err.message));
-  if (e.target.classList.contains("del") && confirm("이 계정을 삭제할까요? (이벤트는 남습니다)")) {
+  if (e.target.classList.contains("del") && confirm(t("이 계정을 삭제할까요? (이벤트는 남습니다)"))) {
     api("/api/admin/accounts/" + tr.dataset.pubkey, "DELETE").then(loadAccounts).catch((err) => alert(err.message));
   }
 });
@@ -644,7 +644,7 @@ $("invites").addEventListener("click", (e) => {
   if (e.target.classList.contains("copy")) {
     navigator.clipboard?.writeText(tr.dataset.invite).catch(() => {});
   }
-  if (e.target.classList.contains("del") && confirm("이 초대 코드를 삭제할까요? 이미 쓴 사람은 그대로입니다.")) {
+  if (e.target.classList.contains("del") && confirm(t("이 초대 코드를 삭제할까요? 이미 쓴 사람은 그대로입니다."))) {
     api("/api/admin/invites/" + encodeURIComponent(tr.dataset.invite), "DELETE")
       .then(loadInvites).catch((err) => alert(err.message));
   }
@@ -660,7 +660,7 @@ $("groups").addEventListener("click", (e) => {
   }
   if (e.target.classList.contains("save")) saveGroupRow(tr).catch((err) => alert(err.message));
   if (e.target.classList.contains("del") &&
-      confirm("이 그룹을 삭제할까요? 멤버는 각자 계정으로 돌아갑니다.")) {
+      confirm(t("이 그룹을 삭제할까요? 멤버는 각자 계정으로 돌아갑니다."))) {
     api("/api/admin/groups/" + tr.dataset.group, "DELETE").then(loadGroups).catch((err) => alert(err.message));
   }
 });
@@ -668,7 +668,7 @@ $("groups").addEventListener("click", (e) => {
 $("group-members").addEventListener("click", (e) => {
   const row = e.target.closest("[data-member]");
   if (!row || !e.target.closest(".member-del")) return;
-  if (!confirm("이 멤버를 그룹에서 뺄까요?")) return;
+  if (!confirm(t("이 멤버를 그룹에서 뺄까요?"))) return;
   api(`/api/admin/groups/${openGroup}/members/${row.dataset.member}`, "DELETE")
     .then(loadGroups).catch((err) => alert(err.message));
 });
@@ -679,7 +679,7 @@ $("domains").addEventListener("click", (e) => {
   if (!tr) return;
   if (e.target.classList.contains("save")) saveDomainRow(tr).catch((err) => alert(err.message));
   if (e.target.classList.contains("del") &&
-      confirm("이 도메인을 지울까요? 이 도메인으로 판매된 주소가 모두 사라집니다.")) {
+      confirm(t("이 도메인을 지울까요? 이 도메인으로 판매된 주소가 모두 사라집니다."))) {
     api("/api/admin/nip05/domains/" + encodeURIComponent(tr.dataset.domain), "DELETE")
       .then(() => { loadDomains(); loadNames(); }).catch((err) => alert(err.message));
   }
@@ -699,7 +699,7 @@ $("names").addEventListener("click", (e) => {
   const tr = e.target.closest("tr[data-name]");
   if (!tr) return;
   if (e.target.classList.contains("save")) saveNameRow(tr).catch((err) => alert(err.message));
-  if (e.target.classList.contains("del") && confirm("이 주소를 회수할까요?")) {
+  if (e.target.classList.contains("del") && confirm(t("이 주소를 회수할까요?"))) {
     api(nameURL(tr.dataset.domain, tr.dataset.name), "DELETE")
       .then(loadNames).catch((err) => alert(err.message));
   }
@@ -708,7 +708,7 @@ $("names").addEventListener("click", (e) => {
 $("blobs").addEventListener("click", (e) => {
   const tr = e.target.closest("tr[data-blob]");
   if (!tr || !e.target.classList.contains("blob-del")) return;
-  if (!confirm("이 파일을 서버에서 지울까요? 모든 소유자에게서 제거되고 용량이 환불됩니다.")) return;
+  if (!confirm(t("이 파일을 서버에서 지울까요? 모든 소유자에게서 제거되고 용량이 환불됩니다."))) return;
   api("/api/admin/blobs/" + tr.dataset.blob, "DELETE").then(loadBlobs).catch((err) => alert(err.message));
 });
 

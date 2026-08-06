@@ -68,6 +68,11 @@ a { color: var(--accent); }
 .nav a:hover { background: #ffffff0a; color: var(--fg); }
 .nav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .nav-spacer { flex: 1; }
+
+/* language picker: in the sidebar, and on the admin login screen */
+.lang-row, label.lang { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+label.lang { padding: 0 4px; }
+select.lang { flex: 1; padding: 7px 10px; font-size: 13px; }
 .nav-out { color: var(--bad); background: none; border: 0; }
 .nav-out:hover { background: #f871711a; color: var(--bad); }
 

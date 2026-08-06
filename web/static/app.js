@@ -15,7 +15,7 @@ const fmtBytes = (n) => {
   if (n >= 1024) return (n / 1024).toFixed(1) + " KB";
   return n + " B";
 };
-const fmtDate = (unix) => (unix ? new Date(unix * 1000).toLocaleString() : "무기한");
+const fmtDate = (unix) => (unix ? new Date(unix * 1000).toLocaleString() : t("무기한"));
 
 const esc = (s) =>
   String(s).replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
@@ -37,7 +37,7 @@ const postJSON = (payload) => ({
 // carries a NIP-98 signature instead of a session. Whoever holds the key — a
 // NIP-07 extension or a NIP-46 remote signer — is behind `signer`.
 async function signedAPI(path, method, payload) {
-  if (!signer) throw new Error("멤버 관리에는 서명 로그인이 필요합니다.");
+  if (!signer) throw new Error(t("멤버 관리에는 서명 로그인이 필요합니다."));
   const body = payload === undefined ? undefined : JSON.stringify(payload);
   const headers = { Authorization: await nip98Header(path, method, body, signer) };
   if (body) headers["Content-Type"] = "application/json";
@@ -54,12 +54,12 @@ async function loadInfo() {
   $("relay-url").textContent = info.relay_url || location.origin.replace(/^http/, "ws");
 
   const rows = [
-    ["가입비 (최초 1회)", fmtSats(info.admission_sats)],
-    [`구독 (${info.period_days}일)`, fmtSats(info.subscription_sats)],
-    ["구독 포함 용량", `${info.included_mb} MB`],
-    ["추가 용량", `${fmtSats(info.price_per_mb_sats)} / MB`],
+    [t("가입비 (최초 1회)"), fmtSats(info.admission_sats)],
+    [t("구독 ({0}일)", info.period_days), fmtSats(info.subscription_sats)],
+    [t("구독 포함 용량"), `${info.included_mb} MB`],
+    [t("추가 용량"), `${fmtSats(info.price_per_mb_sats)} / MB`],
   ];
-  if (info.nip05_domains > 0) rows.push(["NIP-05 도메인", `${info.nip05_domains}개 판매 중`]);
+  if (info.nip05_domains > 0) rows.push([t("NIP-05 도메인"), t("{0}개 판매 중", info.nip05_domains)]);
   $("prices").innerHTML = rows
     .map(([k, v]) => `<tr><th>${k}</th><td class="num">${v}</td></tr>`).join("");
 }
@@ -74,17 +74,17 @@ async function showAccount() {
   if (!acct.exists) {
     $("account").innerHTML =
       `<div class="row"><span class="chip"><code>${pubkey.slice(0, 16)}…</code></span>
-       <span class="muted small">아직 등록되지 않음. 아래에서 가입하세요.</span></div>`;
+       <span class="muted small">${t("아직 등록되지 않음. 아래에서 가입하세요.")}</span></div>`;
   } else {
     const pct = acct.quota_bytes ? Math.min(100, (acct.used_bytes / acct.quota_bytes) * 100) : 100;
     $("account").innerHTML = `
       <div class="row">
         <span class="chip"><code>${pubkey.slice(0, 16)}…</code>
-          <span class="sub">만료 ${fmtDate(acct.expires_at)}</span></span>
-        <span class="${acct.can_write ? "ok" : "bad"} small">${acct.can_write ? "쓰기 가능" : "쓰기 불가"}</span>
+          <span class="sub">${t("만료 {0}", fmtDate(acct.expires_at))}</span></span>
+        <span class="${acct.can_write ? "ok" : "bad"} small">${acct.can_write ? t("쓰기 가능") : t("쓰기 불가")}</span>
       </div>
       <div class="bar"><span style="width:${pct}%"></span></div>
-      <p class="small muted">${fmtBytes(acct.used_bytes)} / ${fmtBytes(acct.quota_bytes)} 사용</p>`;
+      <p class="small muted">${t("{0} / {1} 사용", fmtBytes(acct.used_bytes), fmtBytes(acct.quota_bytes))}</p>`;
   }
 
   group = acct.group || null;
@@ -102,7 +102,7 @@ async function loadDomains() {
     .map((d) => `<option value="${esc(d.domain)}">${esc(d.domain)}</option>`)
     .join("");
   if (!domains.length) {
-    $("nip05-quote").textContent = "판매 중인 도메인이 없습니다.";
+    $("nip05-quote").textContent = t("판매 중인 도메인이 없습니다.");
   }
 }
 
@@ -110,9 +110,9 @@ async function showMyNames() {
   if (!pubkey) return;
   const names = await api("/api/nip05/names/" + pubkey).catch(() => []);
   $("my-names").innerHTML = names.length
-    ? `<p class="small muted">보유 중인 주소</p><div class="chips">` +
+    ? `<p class="small muted">${t("보유 중인 주소")}</p><div class="chips">` +
       names.map((n) => `<span class="chip"><code>${esc(n.name)}@${esc(n.domain)}</code>
-        <span class="sub">${n.permanent ? "무기한" : "만료 " + fmtDate(n.expires_at)}</span></span>`).join("") +
+        <span class="sub">${n.permanent ? t("무기한") : t("만료 {0}", fmtDate(n.expires_at))}</span></span>`).join("") +
       `</div>`
     : "";
 }
@@ -132,7 +132,7 @@ async function checkName() {
 
   if (res.available) {
     $("nip05-quote").innerHTML =
-      `<span class="ok">${esc(name)}@${esc(domain)} 구매 가능 — ${fmtSats(res.sats)}</span>`;
+      `<span class="ok">${t("{0}@{1} 구매 가능 — {2}", esc(name), esc(domain), fmtSats(res.sats))}</span>`;
     $("order-name").disabled = false;
   } else {
     $("nip05-quote").innerHTML = `<span class="bad">${esc(res.reason)}</span>`;
@@ -143,7 +143,7 @@ async function checkName() {
 
 function showGroup() {
   if (!group) {
-    $("group-status").innerHTML = `<p class="muted small">아직 그룹이 없습니다. 이름을 정해 만드세요.</p>`;
+    $("group-status").innerHTML = `<p class="muted small">${t("아직 그룹이 없습니다. 이름을 정해 만드세요.")}</p>`;
     $("group-members").innerHTML = "";
     $("group-name").disabled = false;
     return;
@@ -153,11 +153,11 @@ function showGroup() {
   $("group-status").innerHTML = `
     <div class="row">
       <span class="chip">${esc(group.name || group.id.slice(0, 12))}
-        <span class="sub">만료 ${fmtDate(group.expires_at)}</span></span>
-      ${group.owner === pubkey ? '<span class="ok small">소유자</span>' : ""}
+        <span class="sub">${t("만료 {0}", fmtDate(group.expires_at))}</span></span>
+      ${group.owner === pubkey ? `<span class="ok small">${t("소유자")}</span>` : ""}
     </div>
     <div class="bar"><span style="width:${pct}%"></span></div>
-    <p class="small muted">${fmtBytes(group.used_bytes)} / ${fmtBytes(group.quota_bytes)} 사용</p>`;
+    <p class="small muted">${t("{0} / {1} 사용", fmtBytes(group.used_bytes), fmtBytes(group.quota_bytes))}</p>`;
   // the name is fixed once the group exists; top-ups go to the same one
   $("group-name").value = group.name || "";
   $("group-name").disabled = true;
@@ -165,7 +165,7 @@ function showGroup() {
   if (group.owner === pubkey) {
     showMembers();
   } else {
-    $("group-members").innerHTML = `<p class="muted small">멤버 관리는 그룹 소유자만 할 수 있습니다.</p>`;
+    $("group-members").innerHTML = `<p class="muted small">${t("멤버 관리는 그룹 소유자만 할 수 있습니다.")}</p>`;
   }
 }
 
@@ -175,28 +175,28 @@ async function showMembers() {
     members = await signedAPI(`/api/group/${group.id}/members`, "GET");
   } catch (err) {
     $("group-members").innerHTML =
-      `<p class="muted small">멤버를 보려면 서명이 필요합니다. <button id="load-members" class="secondary">불러오기</button></p>`;
+      `<p class="muted small">${t("멤버를 보려면 서명이 필요합니다.")} <button id="load-members" class="secondary">${t("불러오기")}</button></p>`;
     $("load-members").onclick = () => showMembers().catch((e) => alert(e.message));
     return;
   }
 
   $("group-members").innerHTML = `
-    <h3>멤버</h3>
+    <h3>${t("멤버")}</h3>
     <div class="row">
-      <input id="new-member" class="grow" placeholder="추가할 pubkey (hex)" spellcheck="false">
-      <button id="add-member">추가</button>
+      <input id="new-member" class="grow" placeholder="${t("추가할 pubkey (hex)")}" spellcheck="false">
+      <button id="add-member">${t("추가")}</button>
     </div>
     <div class="chips">` +
     members.map((m) => `
       <span class="chip" data-member="${esc(m.pubkey)}">
         <code>${esc(m.pubkey.slice(0, 24))}…</code>
-        ${m.pubkey === group.owner ? '<span class="sub">소유자</span>'
+        ${m.pubkey === group.owner ? `<span class="sub">${t("소유자")}</span>`
           : '<svg class="i member-del"><use href="#i-x"/></svg>'}
       </span>`).join("") + `</div>`;
 
   $("add-member").onclick = async () => {
     const member = $("new-member").value.trim().toLowerCase();
-    if (!/^[0-9a-f]{64}$/.test(member)) return alert("64자리 hex pubkey를 입력하세요.");
+    if (!/^[0-9a-f]{64}$/.test(member)) return alert(t("64자리 hex pubkey를 입력하세요."));
     try {
       await signedAPI(`/api/group/${group.id}/members/${member}`, "PUT", {});
       showMembers();
@@ -212,7 +212,8 @@ function quote() {
   const extra = Number($("extra-mb").value) || 0;
   const total = periods * info.subscription_sats + extra * info.price_per_mb_sats;
   $("quote").textContent =
-    `구독 ${periods}회 + 추가 ${extra}MB ≈ ${fmtSats(total)} (신규 가입이면 가입비 ${fmtSats(info.admission_sats)} 추가)`;
+    t("구독 {0}회 + 추가 {1}MB ≈ {2} (신규 가입이면 가입비 {3} 추가)",
+       periods, extra, fmtSats(total), fmtSats(info.admission_sats));
 }
 
 // --- login ---
@@ -231,7 +232,7 @@ function signedIn(pk, how) {
 
 async function connect() {
   if (!window.nostr) {
-    alert("NIP-07 확장(Alby, nos2x 등)이 없습니다. bunker 연결이나 QR을 쓰거나 pubkey를 붙여넣으세요.");
+    alert(t("NIP-07 확장(Alby, nos2x 등)이 없습니다. bunker 연결이나 QR을 쓰거나 pubkey를 붙여넣으세요."));
     return;
   }
   signer = window.nostr;
@@ -243,7 +244,7 @@ async function connect() {
 function onSignerStatus(update) {
   if (update.authUrl) {
     $("login-status").innerHTML =
-      `<a href="${esc(update.authUrl)}" target="_blank" rel="noopener">서명자 승인 창 열기</a>`;
+      `<a href="${esc(update.authUrl)}" target="_blank" rel="noopener">${t("서명자 승인 창 열기")}</a>`;
     window.open(update.authUrl, "_blank", "noopener,width=600,height=700");
     return;
   }
@@ -254,10 +255,10 @@ async function connectBunker() {
   const uri = $("bunker-uri").value.trim();
   if (!uri) return;
   $("bunker-connect").disabled = true;
-  status("서명자에 연결하는 중…");
+  status(t("서명자에 연결하는 중…"));
   try {
     signer = await window.nip46.connectBunker(uri, onSignerStatus);
-    signedIn(signer.pubkey, "원격 서명자에 연결되었습니다.");
+    signedIn(signer.pubkey, t("원격 서명자에 연결되었습니다."));
   } catch (err) {
     status(err.message, "bad");
   } finally {
@@ -267,7 +268,7 @@ async function connectBunker() {
 
 async function startNostrconnect() {
   const relays = (info?.nip46_relays || "").split(",").map((r) => r.trim()).filter(Boolean);
-  if (!relays.length) return status("이 릴레이는 nostrconnect relay가 설정되어 있지 않습니다.", "bad");
+  if (!relays.length) return status(t("이 릴레이는 nostrconnect relay가 설정되어 있지 않습니다."), "bad");
 
   nostrconnect?.cancel();
   nostrconnect = window.nip46.startNostrconnect(
@@ -280,11 +281,11 @@ async function startNostrconnect() {
   $("nc-box").innerHTML = qr.createImgTag(4, 0);
   $("nc-uri").value = nostrconnect.uri;
   $("nc-uri-row").hidden = false;
-  status("지갑 앱으로 QR을 스캔하거나 연결 문자열을 붙여넣으세요");
+  status(t("지갑 앱으로 QR을 스캔하거나 연결 문자열을 붙여넣으세요"));
 
   try {
     signer = await nostrconnect.connected;
-    signedIn(signer.pubkey, "원격 서명자에 연결되었습니다.");
+    signedIn(signer.pubkey, t("원격 서명자에 연결되었습니다."));
   } catch (err) {
     status(err.message, "bad");
   }
@@ -299,7 +300,7 @@ async function placeOrder(button, fields) {
     $("sec-invoice").hidden = false;
     $("qr").src = inv.qr;
     $("bolt11").value = inv.bolt11;
-    $("invoice-status").textContent = `${fmtSats(inv.sats)} 결제 대기 중…`;
+    $("invoice-status").textContent = t("{0} 결제 대기 중…", fmtSats(inv.sats));
     $("sec-invoice").scrollIntoView({ behavior: "smooth", block: "nearest" });
     watch(inv.payment_hash);
   } catch (err) {
@@ -342,11 +343,11 @@ function watch(hash) {
     if (!inv) return;
     if (inv.paid) {
       clearInterval(pollTimer);
-      $("invoice-status").innerHTML = '<span class="ok">결제 완료.</span>';
+      $("invoice-status").innerHTML = `<span class="ok">${t("결제 완료.")}</span>`;
       showAccount();
     } else if (inv.status === "expired") {
       clearInterval(pollTimer);
-      $("invoice-status").innerHTML = '<span class="bad">인보이스 만료. 다시 발행하세요.</span>';
+      $("invoice-status").innerHTML = `<span class="bad">${t("인보이스 만료. 다시 발행하세요.")}</span>`;
     }
   }, 3000);
 }
@@ -366,7 +367,7 @@ $("claim-invite").onclick = async () => {
   $("claim-invite").disabled = true;
   try {
     await signedAPI("/api/invite/claim", "POST", { code });
-    $("invite-status").innerHTML = '<span class="ok">등록되었습니다.</span>';
+    $("invite-status").innerHTML = `<span class="ok">${t("등록되었습니다.")}</span>`;
     $("invite-code").value = "";
     showAccount();
   } catch (err) {
@@ -389,7 +390,7 @@ for (const id of ["nip05-name", "nip05-domain", "nip05-periods"]) {
 $("group-members").addEventListener("click", (e) => {
   const row = e.target.closest("[data-member]");
   if (!row || !e.target.closest(".member-del")) return;
-  if (!confirm("이 멤버를 그룹에서 뺄까요?")) return;
+  if (!confirm(t("이 멤버를 그룹에서 뺄까요?"))) return;
   signedAPI(`/api/group/${group.id}/members/${row.dataset.member}`, "DELETE")
     .then(showMembers).catch((err) => alert(err.message));
 });
@@ -398,9 +399,9 @@ $("pubkey-input").onchange = (e) => {
   if (/^[0-9a-f]{64}$/i.test(v)) {
     // read-only: we know who they are but cannot sign for them
     signer = null;
-    signedIn(v, "읽기 전용입니다. 멤버 관리에는 서명 로그인이 필요합니다.");
+    signedIn(v, t("읽기 전용입니다. 멤버 관리에는 서명 로그인이 필요합니다."));
   } else if (v) {
-    alert("64자리 hex pubkey를 입력하세요 (npub은 확장 연결을 사용하세요).");
+    alert(t("64자리 hex pubkey를 입력하세요 (npub은 확장 연결을 사용하세요)."));
   }
 };
 

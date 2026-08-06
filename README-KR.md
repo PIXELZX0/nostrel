@@ -227,7 +227,7 @@ PANEL_URL=http://localhost:3334 ./nostrel
 | `SERVICE_URL` | 클라이언트에 광고할 공개 wss:// 주소 |
 | `RELAY_SECRET_KEY` | 릴레이의 NIP-43 서명키 — 릴레이의 신원이라 DB에 넣지 않는다 |
 | `ADMIN_PUBKEYS` | 패널·NIP-86 접근을 허용할 hex pubkey (쉼표 구분) |
-| `ADMIN_PASSWORD_HASH` | 대체 비밀번호 로그인 (`nostrel hash-password '…'`) |
+| `ADMIN_PASSWORD_HASH` | 대체 비밀번호 로그인 — 비밀번호가 아니라 **bcrypt** 해시(`$2a$10$…`). `nostrel hash-password '…'`로 출력 |
 | `SESSION_SECRET` | 비밀번호 세션 쿠키 서명용. 없으면 재시작 시 세션이 사라진다 |
 
 패널이 소유하는 값(`관리자`): 릴레이 이름·설명·아이콘·배너, 운영자 연락처·pubkey, 테마, 보관 기간, 국가·언어·주제, 요금, NIP-05 할증, NIP-46 relay, nsite 도메인, 자동 초대, kind 정책, 제3자 zap·배지 허용, `read_auth_required`, `min_pow`, `created_at` 허용치, 결제 백엔드와 자격증명, 미디어 백엔드와 `max_blob_size_mb`.
@@ -478,7 +478,8 @@ curl -X PUT https://relay.example.com/upload -H "Authorization: Nostr $AUTH" --d
 `PANEL_URL/admin`
 
 - NIP-98: `ADMIN_PUBKEYS`에 있는 키로 서명. 요청마다 서명하며 URL·메서드·본문 해시가 모두 검증되고, 60초 창 + 재사용 차단이 적용된다.
-- 비밀번호: `nostrel hash-password '비밀번호'`로 해시를 만들어 `ADMIN_PASSWORD_HASH`에 넣는다. 세션 쿠키는 HttpOnly · SameSite=Strict · 12시간.
+- NIP-07 · NIP-46: 서명키는 브라우저 확장에서 와도 되고 원격 서명자에서 와도 된다. `bunker://` 문자열을 붙여넣거나 `nostrconnect://` QR을 스캔한다. 원격 서명자가 요청마다 같은 방식으로 서명하며, 키 자체는 패널에도 릴레이에도 오지 않는다. QR을 쓰려면 `관리자`에서 `NIP-46 로그인 relay`를 설정해야 한다.
+- 비밀번호: `nostrel hash-password '비밀번호'`로 해시를 만들어 `ADMIN_PASSWORD_HASH`에 넣는다. 이 값은 **bcrypt** 해시(`golang.org/x/crypto/bcrypt`, `DefaultCost` = 10)로 `$2a$10$…` 모양이며, 평문 비밀번호는 환경변수에 들어가지 않는다. 검증은 `bcrypt.CompareHashAndPassword`이고, 실패 시도는 IP당 15분에 5회로 제한된다. 세션 쿠키는 HttpOnly · SameSite=Strict · 12시간.
 
 **주의:** NIP-98의 `u` 태그는 `PANEL_URL` + 요청 경로와 정확히 일치해야 한다(다른 사이트에서 받은 서명의 재사용을 막기 위함). 브라우저에서 접속하는 주소와 `PANEL_URL`이 다르면 서명 로그인이 실패한다.
 

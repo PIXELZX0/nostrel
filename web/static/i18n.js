@@ -104,7 +104,8 @@ const dict = {
       "Enter a 64-character hex pubkey (for an npub, connect an extension instead).",
 
     // --- admin: login ---
-    "NIP-07 서명 로그인 또는 관리자 비밀번호": "NIP-07 signed login, or the admin password",
+    "NIP-07 · NIP-46 서명 로그인 또는 관리자 비밀번호":
+      "NIP-07 or NIP-46 signed login, or the admin password",
     "로그인": "Log in",
     "관리자 비밀번호": "admin password",
     "NIP-07 확장이 없습니다.": "No NIP-07 extension found.",

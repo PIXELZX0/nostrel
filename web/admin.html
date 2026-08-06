@@ -27,7 +27,7 @@
 <div class="login" id="login-card">
   <header>
     <h1>관리자</h1>
-    <p class="muted">NIP-07 서명 로그인 또는 관리자 비밀번호</p>
+    <p class="muted">NIP-07 · NIP-46 서명 로그인 또는 관리자 비밀번호</p>
     <label class="lang-row"><svg class="i"><use href="#i-globe"/></svg>
       <select class="lang">
         <option value="ko">한국어</option>
@@ -36,11 +36,37 @@
   </header>
   <section class="card">
     <h2>로그인</h2>
-    <button id="login-nostr">확장으로 서명 로그인</button>
+    <label class="stack">확장 프로그램 (NIP-07)
+      <button id="login-nostr">확장으로 서명 로그인</button>
+    </label>
+
+    <div class="divider"><span>또는</span></div>
+
+    <label class="stack">Bunker (NIP-46)
+      <div class="row">
+        <input id="bunker-uri" class="grow" placeholder="bunker://..." spellcheck="false">
+        <button id="bunker-connect">연결</button>
+      </div>
+    </label>
+
+    <div class="divider"><span>또는</span></div>
+
+    <div class="stack" style="align-items:center">
+      <span class="muted small">QR 스캔 (nostrconnect)</span>
+      <div id="nc-box" class="qr-box"><button id="nc-start" class="secondary">QR 만들기</button></div>
+      <div class="row" id="nc-uri-row" hidden>
+        <input id="nc-uri" class="grow" readonly spellcheck="false">
+        <button id="nc-copy" class="secondary">복사</button>
+      </div>
+    </div>
+
+    <div class="divider"><span>또는</span></div>
+
     <div class="row">
       <input id="password" class="grow" type="password" placeholder="관리자 비밀번호" autocomplete="current-password">
       <button id="login-password" class="secondary">로그인</button>
     </div>
+    <p id="login-status" class="muted small"></p>
     <p id="login-error" class="error"></p>
   </section>
 </div>
@@ -254,7 +280,9 @@
 </div>
 <script src="/static/i18n.js"></script>
 <script src="/static/theme.js"></script>
+<script src="/static/vendor/qrcode.js"></script>
 <script src="/static/nip98.js"></script>
 <script src="/static/admin.js"></script>
+<script type="module" src="/static/nip46.js"></script>
 </body>
 </html>

@@ -32,7 +32,9 @@ type Config struct {
 	// response. Empty disables NIP-43 entirely.
 	RelaySecretKey string
 
-	AdminPubkeys      []string
+	AdminPubkeys []string
+	// AdminPasswordHash is a bcrypt hash ("$2a$10$..."), as printed by
+	// `nostrel hash-password`, not the password itself.
 	AdminPasswordHash string
 	SessionSecret     []byte
 }

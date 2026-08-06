@@ -227,7 +227,7 @@ The environment holds only what has to be known before the database is open and 
 | `SERVICE_URL` | public wss:// address advertised to clients |
 | `RELAY_SECRET_KEY` | the relay's NIP-43 signing key — its identity, never stored in the database |
 | `ADMIN_PUBKEYS` | comma separated hex pubkeys allowed into the panel and NIP-86 |
-| `ADMIN_PASSWORD_HASH` | fallback password login (`nostrel hash-password '…'`) |
+| `ADMIN_PASSWORD_HASH` | fallback password login — a **bcrypt** hash (`$2a$10$…`), never the password itself; print one with `nostrel hash-password '…'` |
 | `SESSION_SECRET` | signs password session cookies; without it sessions die on restart |
 
 Panel-owned, in `Admin`: relay name, description, icon, banner, operator contact and pubkey, theme, retention, countries, languages, topics, prices, NIP-05 premium tiers, NIP-46 relays, nsite domains, auto-invite, kind policy, third-party zap/badge acceptance, `read_auth_required`, `min_pow`, the `created_at` limits, the payment backend and its credentials, and the media backend including `max_blob_size_mb`.
@@ -471,7 +471,8 @@ curl -X PUT https://relay.example.com/upload -H "Authorization: Nostr $AUTH" --d
 `PANEL_URL/admin`
 
 - NIP-98: sign with a key listed in `ADMIN_PUBKEYS`. Every request is signed, the URL, method and body hash are all verified, and a 60-second window plus replay blocking applies.
-- Password: generate a hash with `nostrel hash-password 'password'` and put it in `ADMIN_PASSWORD_HASH`. The session cookie is HttpOnly, SameSite=Strict, 12 hours.
+- NIP-07 or NIP-46: the signing key can come from a browser extension or from a remote signer — paste a `bunker://` string or scan the `nostrconnect://` QR. The remote signer signs each request the same way; the key itself never reaches the page or the relay. The QR needs `NIP-46 login relays` set under `Admin`.
+- Password: generate a hash with `nostrel hash-password 'password'` and put it in `ADMIN_PASSWORD_HASH`. It is a **bcrypt** hash (`golang.org/x/crypto/bcrypt`, `DefaultCost` = 10) and looks like `$2a$10$…` — the plaintext password never appears in the environment. Verification is `bcrypt.CompareHashAndPassword`; failed attempts are rate-limited to 5 per IP per 15 minutes. The session cookie is HttpOnly, SameSite=Strict, 12 hours.
 
 **Note:** a NIP-98 `u` tag must match `PANEL_URL` plus the request path exactly (to stop signatures obtained on another site from being replayed). If the address you open in the browser differs from `PANEL_URL`, signed login will fail.
 

@@ -3,9 +3,13 @@
 const $ = (id) => document.getElementById(id);
 const MB = 1024 * 1024;
 
-// "nostr" = sign every request with the extension, "session" = rely on the cookie
+// "nostr" = sign every request with `signer`, "session" = rely on the cookie
 let mode = null;
 let settings = null;
+// the NIP-07 extension or a NIP-46 remote signer, whichever logged in
+let signer = null;
+let info = null;
+let nostrconnect = null;
 
 const fmtDate = (unix) => (unix ? new Date(unix * 1000).toLocaleString() : t("무기한"));
 const fmtMB = (bytes) => (bytes / MB).toFixed(1);
@@ -18,7 +22,7 @@ async function api(path, method = "GET", payload) {
   const body = payload === undefined ? undefined : JSON.stringify(payload);
   const headers = {};
   if (body) headers["Content-Type"] = "application/json";
-  if (mode === "nostr") headers["Authorization"] = await nip98Header(path, method, body);
+  if (mode === "nostr") headers["Authorization"] = await nip98Header(path, method, body, signer);
 
   const res = await fetch(path, { method, headers, body });
   const data = res.status === 204 ? null : await res.json();
@@ -578,17 +582,84 @@ async function loadPayments() {
     (payments.length ? "" : `<tr><td colspan="5" class="empty">${t("결제 없음")}</td></tr>`);
 }
 
-$("login-nostr").onclick = async () => {
-  if (!window.nostr) return ($("login-error").textContent = t("NIP-07 확장이 없습니다."));
+// signIn proves to the server that `next` signs for an admin pubkey. The same
+// signer then signs every later request, so a remote one has to stay open.
+async function signIn(next) {
   mode = "nostr";
+  signer = next;
+  $("login-error").textContent = "";
   try {
     await api("/api/admin/session");
     loadAll();
   } catch (err) {
     mode = null;
+    signer = null;
+    $("login-error").textContent = err.message;
+  }
+}
+
+// onSignerStatus surfaces what the remote signer is asking for — most often an
+// approval page the user has to open.
+function onSignerStatus(update) {
+  if (update.authUrl) {
+    $("login-status").innerHTML =
+      `<a href="${esc(update.authUrl)}" target="_blank" rel="noopener">${t("서명자 승인 창 열기")}</a>`;
+    window.open(update.authUrl, "_blank", "noopener,width=600,height=700");
+    return;
+  }
+  if (update.message) $("login-status").textContent = update.message;
+}
+
+$("login-nostr").onclick = () => {
+  if (!window.nostr) return ($("login-error").textContent = t("NIP-07 확장이 없습니다."));
+  signIn(window.nostr);
+};
+
+$("bunker-connect").onclick = async () => {
+  const uri = $("bunker-uri").value.trim();
+  if (!uri) return;
+  $("bunker-connect").disabled = true;
+  $("login-status").textContent = t("서명자에 연결하는 중…");
+  try {
+    const remote = await window.nip46.connectBunker(uri, onSignerStatus);
+    $("login-status").textContent = t("원격 서명자에 연결되었습니다.");
+    await signIn(remote);
+  } catch (err) {
+    $("login-error").textContent = err.message;
+  } finally {
+    $("bunker-connect").disabled = false;
+  }
+};
+
+$("nc-start").onclick = async () => {
+  const relays = (info?.nip46_relays || "").split(",").map((r) => r.trim()).filter(Boolean);
+  if (!relays.length) {
+    return ($("login-error").textContent = t("이 릴레이는 nostrconnect relay가 설정되어 있지 않습니다."));
+  }
+
+  nostrconnect?.cancel();
+  nostrconnect = window.nip46.startNostrconnect(
+    { relays, name: info.name, url: location.origin, perms: "sign_event:27235" },
+    onSignerStatus);
+
+  const qr = qrcode(0, "M");
+  qr.addData(nostrconnect.uri);
+  qr.make();
+  $("nc-box").innerHTML = qr.createImgTag(4, 0);
+  $("nc-uri").value = nostrconnect.uri;
+  $("nc-uri-row").hidden = false;
+  $("login-status").textContent = t("지갑 앱으로 QR을 스캔하거나 연결 문자열을 붙여넣으세요");
+
+  try {
+    const remote = await nostrconnect.connected;
+    $("login-status").textContent = t("원격 서명자에 연결되었습니다.");
+    await signIn(remote);
+  } catch (err) {
     $("login-error").textContent = err.message;
   }
 };
+
+$("nc-copy").onclick = () => navigator.clipboard.writeText($("nc-uri").value);
 
 $("login-password").onclick = async () => {
   try {
@@ -725,8 +796,12 @@ $("blob-reports").addEventListener("click", (e) => {
   api("/api/admin/blobs/reports/" + row.dataset.report, "DELETE").then(loadBlobs).catch((err) => alert(err.message));
 });
 
-// the theme is public, so the login screen wears it too
-fetch("/api/info").then((res) => res.json()).then(applyTheme).catch(() => {});
+// the theme is public, so the login screen wears it too; the same document
+// carries the nostrconnect relays the QR login needs
+fetch("/api/info").then((res) => res.json()).then((data) => {
+  info = data;
+  applyTheme(data);
+}).catch(() => {});
 
 // already logged in with a password session?
 fetch("/api/admin/session").then((res) => {

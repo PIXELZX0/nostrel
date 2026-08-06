@@ -18,6 +18,16 @@ const dict = {
     "NIP-05 주소": "NIP-05 identifiers",
     "그룹": "Groups",
     "결제": "Payment",
+    "미디어 서버": "Media server",
+    "인보이스 발행 중…": "Creating the invoice…",
+    "로그인 없이 요금만 보기": "Browse the pricing without signing in",
+    "미디어 서버 (Blossom · NIP-96)": "Media server (Blossom · NIP-96)",
+    "이 릴레이가 미디어 서버를 겸합니다. 아래 주소를 클라이언트의 미디어 서버 설정에 넣으면 업로드한 파일이 여기에 저장되고, 계정 용량에서 차감됩니다.":
+      "This relay is its own media server. Put the address below into your client's media server setting and uploads land here, charged against your account's storage.",
+    "Blossom 서버 주소": "Blossom server address",
+    "NIP-96 서버 정보": "NIP-96 server info",
+    "지원: BUD-01 · 02 · 04 · 05 · 06 · 09. 업로드에는 쓰기 권한이 있는 계정이 필요합니다.":
+      "Supported: BUD-01 · 02 · 04 · 05 · 06 · 09. Uploading needs an account with write access.",
     "관리자": "Admin",
     "현황": "Overview",
     "결제 백엔드": "Payment backend",

@@ -46,6 +46,10 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"included_mb":        st.IncludedMB,
 		"price_per_mb_sats":  st.PricePerMBSats,
 		"read_auth_required": st.ReadAuthRequired,
+		// media is off when BLOB_PATH could not be prepared; when it is on, the
+		// relay is its own Blossom (and NIP-96) server at the panel's address
+		"media_enabled": s.blobs != nil,
+		"blossom_url":   s.cfg.PanelURL,
 	})
 }
 

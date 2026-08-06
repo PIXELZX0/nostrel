@@ -683,19 +683,22 @@ $("logout").onclick = async (e) => {
   location.reload();
 };
 
-// The sidebar mirrors the page: highlight whichever card is on screen.
+// One nav entry, one page: the hash picks the single card the main column
+// shows, and the card's own <h2> becomes the page heading (CSS hides the h2).
 const navLinks = [...document.querySelectorAll('.nav a[href^="#sec-"]')];
-const spy = new IntersectionObserver(
-  (entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      for (const link of navLinks) {
-        link.classList.toggle("active", link.hash === "#" + entry.target.id);
-      }
-    }
-  },
-  { rootMargin: "-10% 0px -80% 0px" });
-for (const link of navLinks) spy.observe(document.getElementById(link.hash.slice(1)));
+const pages = [...document.querySelectorAll('.main > section[id^="sec-"]')];
+const main = document.querySelector(".main");
+
+function route() {
+  const id = location.hash.slice(1);
+  const page = pages.find((p) => p.id === id) || pages[0];
+  for (const p of pages) p.hidden = p !== page;
+  for (const link of navLinks) link.classList.toggle("active", link.hash === "#" + page.id);
+  $("page-title").textContent = page.querySelector("h2").textContent;
+  main.scrollTop = 0;
+}
+addEventListener("hashchange", route);
+route();
 
 $("save-settings").onclick = saveSettings;
 $("payment-provider").onchange = togglePaymentFields;

@@ -35,7 +35,9 @@ a { color: var(--accent); }
 
 /* --- shell: 240px sidebar + main column --- */
 
-.app { display: flex; min-height: 100vh; }
+/* the shell owns the viewport: sidebar and main scroll on their own, so the
+   nav stays put while a long card scrolls */
+.app { display: flex; height: 100vh; overflow: hidden; }
 
 .sidebar {
   flex: 0 0 240px;
@@ -46,7 +48,8 @@ a { color: var(--accent); }
   display: flex;
   flex-direction: column;
   gap: 24px;
-  min-height: 100vh;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .brand { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 800; }
@@ -79,12 +82,17 @@ select.lang { flex: 1; padding: 7px 10px; font-size: 13px; }
 .main {
   flex: 1;
   min-width: 0;
-  max-width: 1000px;
   padding: 40px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  height: 100%;
+  overflow-y: auto;
 }
+/* the column keeps its old width; the scrollbar stays at the window edge */
+.main > * { width: 100%; max-width: 1000px; }
+/* one card per page: its title is already the <h1> above it */
+.paged > section > h2 { display: none; }
 
 h1 { margin: 0; font-size: 24px; font-weight: 800; }
 .topbar { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
@@ -256,6 +264,60 @@ td input[type=checkbox] { width: 16px; }
 }
 .qr-box img { width: 176px; height: 176px; image-rendering: pixelated; background: #fff; padding: 8px; border-radius: 4px; }
 
+/* --- invoice modal (native <dialog>) --- */
+
+.modal {
+  width: min(420px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--fg);
+  padding: 22px;
+  font: inherit;
+}
+.modal::backdrop { background: #000000a6; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.modal-head h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.4px; color: var(--muted); }
+.modal-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 0 6px;
+}
+.modal-center .row.full { width: 100%; flex-wrap: nowrap; }
+.modal #invoice-status { margin: 0; text-align: center; }
+.icon-btn {
+  background: none;
+  border: 0;
+  padding: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 0;
+}
+.icon-btn:hover { color: var(--fg); }
+
+.spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* the paid check draws itself once, so the modal confirms without a word */
+.check { width: 72px; height: 72px; fill: none; stroke: var(--ok); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.check circle { stroke-dasharray: 152; stroke-dashoffset: 152; animation: draw 0.4s ease-out forwards; }
+.check path { stroke-dasharray: 40; stroke-dashoffset: 40; animation: draw 0.3s 0.35s ease-out forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2s; }
+  .check circle, .check path { animation: none; stroke-dashoffset: 0; }
+}
+
 /* --- login screen (its own centred layout, no sidebar) --- */
 
 .login {
@@ -273,9 +335,10 @@ td input[type=checkbox] { width: 16px; }
 .i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 @media (max-width: 860px) {
-  .app { flex-direction: column; }
-  .sidebar { width: auto; flex: none; min-height: 0; }
+  /* narrow: the nav sits on top and the whole page scrolls as one */
+  .app { flex-direction: column; height: auto; overflow: visible; }
+  .sidebar { width: auto; flex: none; height: auto; overflow: visible; }
   .nav { flex-direction: row; flex-wrap: wrap; }
   .nav-spacer { display: none; }
-  .main { padding: 24px; }
+  .main { padding: 24px; height: auto; overflow: visible; }
 }

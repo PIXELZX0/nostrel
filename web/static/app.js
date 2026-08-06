@@ -50,7 +50,9 @@ async function loadInfo() {
   document.title = info.name;
   $("relay-name").textContent = info.name;
   $("brand-name").textContent = info.name;
+  $("login-name").textContent = info.name;
   $("relay-desc").textContent = info.description;
+  $("login-desc").textContent = info.description;
   $("relay-url").textContent = info.relay_url || location.origin.replace(/^http/, "ws");
 
   const rows = [
@@ -60,6 +62,16 @@ async function loadInfo() {
     [t("추가 용량"), `${fmtSats(info.price_per_mb_sats)} / MB`],
   ];
   if (info.nip05_domains > 0) rows.push([t("NIP-05 도메인"), t("{0}개 판매 중", info.nip05_domains)]);
+
+  // the relay is its own Blossom server, so clients only need this address
+  if (info.media_enabled) {
+    const base = (info.blossom_url || location.origin).replace(/\/$/, "");
+    $("blossom-url").value = base;
+    $("nip96-url").value = base + "/.well-known/nostr/nip96.json";
+    $("sec-blossom").hidden = false;
+    $("nav-blossom").hidden = false;
+  }
+
   $("prices").innerHTML = rows
     .map(([k, v]) => `<tr><th>${k}</th><td class="num">${v}</td></tr>`).join("");
 }
@@ -225,9 +237,16 @@ const status = (text, kind = "muted") =>
 // got us there.
 function signedIn(pk, how) {
   pubkey = pk.toLowerCase();
-  $("login").hidden = true;
+  showPanel();
   showAccount();
   if (how) status(how);
+}
+
+// the login screen is its own page; the panel only appears behind a key, or
+// when someone just wants to read the prices
+function showPanel() {
+  $("login-card").hidden = true;
+  $("panel").hidden = false;
 }
 
 async function connect() {
@@ -295,20 +314,37 @@ async function startNostrconnect() {
 // NIP-05 name all end up as an invoice shown in the same card.
 async function placeOrder(button, fields) {
   button.disabled = true;
+  // the backend has to reach the lightning node first, so the modal opens on
+  // a spinner rather than after the wait
+  showInvoice("loading");
+  $("invoice-status").textContent = "";
   try {
     const inv = await api("/api/order", postJSON({ pubkey, ...fields }));
-    $("sec-invoice").hidden = false;
     $("qr").src = inv.qr;
     $("bolt11").value = inv.bolt11;
     $("invoice-status").textContent = t("{0} 결제 대기 중…", fmtSats(inv.sats));
-    $("sec-invoice").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    showInvoice("invoice");
     watch(inv.payment_hash);
   } catch (err) {
-    $("invoice-status").textContent = "";
+    closeInvoice();
     alert(err.message);
   } finally {
     button.disabled = false;
   }
+}
+
+// The invoice modal has three faces: the spinner while the invoice is minted,
+// the QR to pay, and the check once the payment lands.
+function showInvoice(state) {
+  $("invoice-loading").hidden = state !== "loading";
+  $("invoice-body").hidden = state !== "invoice";
+  $("invoice-done").hidden = state !== "done";
+  if (!$("invoice-modal").open) $("invoice-modal").showModal();
+}
+
+function closeInvoice() {
+  clearInterval(pollTimer);
+  $("invoice-modal").close();
 }
 
 const order = () => placeOrder($("order"), {
@@ -343,7 +379,8 @@ function watch(hash) {
     if (!inv) return;
     if (inv.paid) {
       clearInterval(pollTimer);
-      $("invoice-status").innerHTML = `<span class="ok">${t("결제 완료.")}</span>`;
+      $("invoice-status").textContent = "";
+      showInvoice("done");
       showAccount();
     } else if (inv.status === "expired") {
       clearInterval(pollTimer);
@@ -352,6 +389,11 @@ function watch(hash) {
   }, 3000);
 }
 
+$("browse").onclick = showPanel;
+$("logout").onclick = (e) => {
+  e.preventDefault();
+  location.reload();
+};
 $("connect").onclick = () => connect().catch((err) => status(err.message, "bad"));
 $("bunker-connect").onclick = connectBunker;
 $("nc-start").onclick = startNostrconnect;
@@ -360,6 +402,11 @@ $("order").onclick = order;
 $("periods").oninput = quote;
 $("extra-mb").oninput = quote;
 $("copy").onclick = () => navigator.clipboard.writeText($("bolt11").value);
+$("invoice-close").onclick = closeInvoice;
+// Esc closes the dialog on its own; stop polling with it
+$("invoice-modal").addEventListener("close", () => clearInterval(pollTimer));
+$("copy-blossom").onclick = () => navigator.clipboard.writeText($("blossom-url").value);
+$("copy-nip96").onclick = () => navigator.clipboard.writeText($("nip96-url").value);
 
 $("claim-invite").onclick = async () => {
   const code = $("invite-code").value.trim();

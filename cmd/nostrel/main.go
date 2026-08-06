@@ -52,6 +52,8 @@ func main() {
 		return
 	}
 
+	logConfig(cfg, logger)
+
 	// the lightning backend is panel-owned, so it can be changed without a restart
 	providers := payments.NewResolver(st, cfg.PanelURL+"/webhook/lnbits")
 	switch providers.Name() {
@@ -126,6 +128,44 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	srv.Shutdown(shutdownCtx)
+}
+
+// logConfig prints the settings the process actually resolved. An environment
+// variable that never reached the process (host env not passed into the
+// container, a typo, a missing env_file) is invisible otherwise: the only clue
+// is a warning about a value being empty. Secrets are reported as set/unset.
+func logConfig(cfg *config.Config, logger *log.Logger) {
+	logger.Printf("config: RELAY_PORT=%d DB_PATH=%q PANEL_URL=%q SERVICE_URL=%s",
+		cfg.Port, cfg.DBPath, cfg.PanelURL, quoteOr(cfg.ServiceURL, "(unset, guessed from request headers)"))
+
+	admins := "(none)"
+	if n := len(cfg.AdminPubkeys); n > 0 {
+		short := make([]string, n)
+		for i, pk := range cfg.AdminPubkeys {
+			short[i] = pk[:8] + "…"
+		}
+		admins = fmt.Sprintf("%d (%s)", n, strings.Join(short, ", "))
+	}
+	session := "set"
+	if os.Getenv("SESSION_SECRET") == "" {
+		session = "unset (password sessions drop on restart)"
+	}
+	logger.Printf("config: ADMIN_PUBKEYS=%s ADMIN_PASSWORD_HASH=%s SESSION_SECRET=%s RELAY_SECRET_KEY=%s",
+		admins, setOrNot(cfg.AdminPasswordHash != ""), session, setOrNot(cfg.RelaySecretKey != ""))
+}
+
+func quoteOr(v, empty string) string {
+	if v == "" {
+		return empty
+	}
+	return strconv.Quote(v)
+}
+
+func setOrNot(ok bool) string {
+	if ok {
+		return "set"
+	}
+	return "unset"
 }
 
 func runCommand(name string, st *store.Store, cfg *config.Config, logger *log.Logger) error {

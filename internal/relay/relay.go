@@ -77,24 +77,15 @@ func New(cfg *config.Config, st *store.Store, logger *log.Logger) *Relay {
 			cfg.RelaySecretKey = ""
 		} else {
 			r.selfPubkey = selfPubkey
-			if cfg.RelayPubkey == "" {
-				cfg.RelayPubkey = selfPubkey
-			}
 		}
 	}
 
-	kr.Info.Name = cfg.RelayName
-	kr.Info.Description = cfg.RelayDescription
-	kr.Info.PubKey = cfg.RelayPubkey
-	kr.Info.Contact = cfg.RelayContact
-	kr.Info.Icon = cfg.RelayIcon
+	// The descriptive half of NIP-11 lives in the settings table and is filled
+	// in per request by relayInformation, so an admin's edit is live at once.
 	kr.Info.Software = "https://github.com/nostrel/nostrel"
 	kr.Info.Version = Version
 	kr.Info.SupportedNIPs = nil
 	kr.Info.AddSupportedNIPs(supportedNIPs)
-	if cfg.MinPoW > 0 {
-		kr.Info.AddSupportedNIP(13)
-	}
 	if cfg.ServiceURL != "" {
 		kr.ServiceURL = cfg.ServiceURL
 	}
@@ -152,6 +143,19 @@ func (r *Relay) IsAdmin(pubkey string) bool {
 	return r.store.IsAdmin(pubkey, r.cfg.AdminPubkeys)
 }
 
+// readAuthRequired reports whether reads are restricted to whitelisted pubkeys.
+// A settings read that fails is treated as "restricted": on a private relay
+// that is the only safe answer, and the same broken database would fail the
+// query itself a moment later anyway.
+func (r *Relay) readAuthRequired() bool {
+	settings, err := r.store.Settings()
+	if err != nil {
+		r.Log.Printf("settings read failed: %v", err)
+		return true
+	}
+	return settings.ReadAuthRequired
+}
+
 // relayInformation renders NIP-11 from the live settings so price and policy
 // changes show up immediately.
 func (r *Relay) relayInformation(ctx context.Context, req *http.Request, info nip11.RelayInformationDocument) nip11.RelayInformationDocument {
@@ -160,17 +164,15 @@ func (r *Relay) relayInformation(ctx context.Context, req *http.Request, info ni
 		r.Log.Printf("settings read failed: %v", err)
 		return info
 	}
-	if settings.RelayName != "" {
-		info.Name = settings.RelayName
-	}
-	if settings.RelayDescription != "" {
-		info.Description = settings.RelayDescription
-	}
-	if settings.RelayIcon != "" {
-		info.Icon = settings.RelayIcon
-	}
-	if settings.RelayBanner != "" {
-		info.Banner = settings.RelayBanner
+	info.Name = settings.RelayName
+	info.Description = settings.RelayDescription
+	info.Icon = settings.RelayIcon
+	info.Banner = settings.RelayBanner
+	info.Contact = settings.RelayContact
+	// No operator pubkey configured: the relay's own NIP-43 identity is the
+	// closest thing to one, and it is at least verifiable.
+	if info.PubKey = settings.RelayPubkey; info.PubKey == "" {
+		info.PubKey = r.selfPubkey
 	}
 	info.RelayCountries = commaList(settings.RelayCountries)
 	info.LanguageTags = commaList(settings.RelayLanguages)
@@ -189,6 +191,9 @@ func (r *Relay) relayInformation(ctx context.Context, req *http.Request, info ni
 	// the relay can sign as itself.
 	if r.nip43Enabled() {
 		info.AddSupportedNIP(43)
+	}
+	if settings.MinPoW > 0 {
+		info.AddSupportedNIP(13)
 	}
 	if settings.AcceptZapReceipts {
 		info.AddSupportedNIP(57)
@@ -217,17 +222,17 @@ func (r *Relay) relayInformation(ctx context.Context, req *http.Request, info ni
 		MaxLimit:         r.store.Events.QueryLimit,
 		DefaultLimit:     r.store.Events.QueryLimit,
 		MaxEventTags:     500,
-		MinPowDifficulty: r.cfg.MinPoW,
+		MinPowDifficulty: settings.MinPoW,
 		PaymentRequired:  true,
 		RestrictedWrites: true,
-		AuthRequired:     r.cfg.ReadAuthRequired,
+		AuthRequired:     settings.ReadAuthRequired,
 	}
-	now := time.Now()
-	if r.cfg.MaxPastDrift > 0 {
-		info.Limitation.CreatedAtLowerLimit = now.Add(-r.cfg.MaxPastDrift).Unix()
+	now := time.Now().Unix()
+	if settings.CreatedAtMaxPast > 0 {
+		info.Limitation.CreatedAtLowerLimit = now - int64(settings.CreatedAtMaxPast)
 	}
-	if r.cfg.MaxFutureDrift > 0 {
-		info.Limitation.CreatedAtUpperLimit = now.Add(r.cfg.MaxFutureDrift).Unix()
+	if settings.CreatedAtMaxFuture > 0 {
+		info.Limitation.CreatedAtUpperLimit = now + int64(settings.CreatedAtMaxFuture)
 	}
 
 	fees := &nip11.RelayFeesDocument{}

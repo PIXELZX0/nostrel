@@ -198,7 +198,7 @@ func (s *Server) handleStorageTest(w http.ResponseWriter, r *http.Request) {
 	}
 	candidate.S3SecretKey = keepSecret(candidate.S3SecretKey, current.S3SecretKey)
 
-	backend, err := blobs.BuildBackend(candidate, s.cfg.BlobPath)
+	backend, err := blobs.BuildBackend(candidate, store.DefaultBlobPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -287,6 +287,14 @@ func validateSettings(st store.Settings) error {
 		return errors.New("period_days must be at least 1")
 	case st.IncludedMB < 0:
 		return errors.New("included_mb must not be negative")
+	case st.MinPoW < 0:
+		return errors.New("min_pow must not be negative")
+	case st.CreatedAtMaxPast < 0, st.CreatedAtMaxFuture < 0:
+		return errors.New("the created_at limits must not be negative")
+	case st.MaxBlobSizeMB < 1:
+		return errors.New("max_blob_size_mb must be at least 1")
+	case st.RelayPubkey != "" && !validPubkey(st.RelayPubkey):
+		return errors.New("relay_pubkey must be 64 hex characters")
 	}
 	// a malformed premium spec would make every NIP-05 quote fail
 	if _, err := store.ParsePremiumTiers(st.Nip05PremiumTiers); err != nil {

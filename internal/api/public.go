@@ -23,14 +23,6 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "could not read settings")
 		return
 	}
-	name, desc := st.RelayName, st.RelayDescription
-	if name == "" {
-		name = s.cfg.RelayName
-	}
-	if desc == "" {
-		desc = s.cfg.RelayDescription
-	}
-
 	domains, err := s.store.ListNip05Domains(true)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not list domains")
@@ -40,8 +32,8 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"nip05_domains":      len(domains),
 		"nip46_relays":       st.Nip46Relays,
-		"name":               name,
-		"description":        desc,
+		"name":               st.RelayName,
+		"description":        st.RelayDescription,
 		"icon":               st.RelayIcon,
 		"theme_bg_color":     st.ThemeBgColor,
 		"theme_accent":       st.ThemeAccent,
@@ -53,7 +45,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"period_days":        st.PeriodDays,
 		"included_mb":        st.IncludedMB,
 		"price_per_mb_sats":  st.PricePerMBSats,
-		"read_auth_required": s.cfg.ReadAuthRequired,
+		"read_auth_required": st.ReadAuthRequired,
 	})
 }
 

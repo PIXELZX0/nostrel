@@ -22,27 +22,27 @@ const usagePrefix = "blob:"
 
 type Storage struct {
 	store    *store.Store
-	maxSize  int64
-	localDir string // fallback directory from the environment
+	localDir string // used when the local backend has no path of its own
 
 	mu          sync.RWMutex
 	backend     Backend
 	fingerprint string
+	maxSize     int64
 }
 
 // New builds storage from the settings in the database, falling back to
 // localDir when the local backend is configured without a path of its own.
-func New(st *store.Store, localDir string, maxSize int64) (*Storage, error) {
-	s := &Storage{store: st, localDir: localDir, maxSize: maxSize}
+func New(st *store.Store, localDir string) (*Storage, error) {
+	s := &Storage{store: st, localDir: localDir}
 	if err := s.Reload(); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
 
-// Reload rebuilds the backend if an admin changed the storage settings. Callers
-// invoke it after saving settings; the backend is otherwise left alone so
-// normal traffic costs no extra queries.
+// Reload picks up storage settings an admin changed. Callers invoke it after
+// saving settings; the backend is otherwise left alone so normal traffic costs
+// no extra queries.
 func (s *Storage) Reload() error {
 	settings, err := s.store.Settings()
 	if err != nil {
@@ -52,6 +52,7 @@ func (s *Storage) Reload() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.maxSize = settings.MaxBlobSize()
 	fingerprint := settings.StorageFingerprint()
 	if s.backend != nil && fingerprint == s.fingerprint {
 		return nil
@@ -70,7 +71,11 @@ func (s *Storage) Backend() Backend {
 	return s.backend
 }
 
-func (s *Storage) MaxSize() int64 { return s.maxSize }
+func (s *Storage) MaxSize() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.maxSize
+}
 
 func (s *Storage) Write(ctx context.Context, sha256, ext string, body []byte) error {
 	return s.Backend().Write(ctx, sha256, ext, body)
@@ -107,8 +112,8 @@ func (s *Storage) Refund(sha256 string) error {
 // CheckQuota is the gate for uploads: the same rules as writing an event of
 // that size.
 func (s *Storage) CheckQuota(pubkey string, size int64) (bool, string) {
-	if size > s.maxSize {
-		return false, fmt.Sprintf("file is larger than the %d MB limit", s.maxSize>>20)
+	if max := s.MaxSize(); size > max {
+		return false, fmt.Sprintf("file is larger than the %d MB limit", max>>20)
 	}
 	allowance, err := s.store.Allowance(pubkey)
 	if err != nil {

@@ -52,9 +52,6 @@ func TestBuildValidatesCredentials(t *testing.T) {
 
 func TestResolverRebuildsWhenSettingsChange(t *testing.T) {
 	st := newStore(t)
-	if err := st.EnsurePaymentDefaults("mock", "", "", ""); err != nil {
-		t.Fatal(err)
-	}
 	r := NewResolver(st, "https://relay.example.com/webhook/lnbits")
 
 	first, err := r.Provider()

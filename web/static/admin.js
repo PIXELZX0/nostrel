@@ -52,6 +52,8 @@ const settingFields = [
   ["relay_description", "설명", "text"],
   ["relay_icon", "로고 · 아이콘 URL", "text"],
   ["relay_banner", "배너 URL", "text"],
+  ["relay_contact", "운영자 연락처 (mailto: 등)", "text"],
+  ["relay_pubkey", "운영자 pubkey (hex, 비우면 릴레이 키)", "text"],
   ["theme_bg_color", "배경색", "color", "#121417"],
   ["theme_accent", "포인트 색", "color", "#f7931a"],
   ["theme_bg_image", "배경 이미지 URL", "text"],
@@ -73,6 +75,11 @@ const settingFields = [
   ["auto_invite", "누구나 초대 코드 요청 가능 (NIP-43 kind 28935)", "checkbox"],
   ["auto_invite_period_days", "자동 초대 기간 (일)", "number"],
   ["auto_invite_quota_mb", "자동 초대 용량 (MB)", "number"],
+  ["read_auth_required", "읽기도 인증·화이트리스트 필요 (NIP-42)", "checkbox"],
+  ["min_pow", "최소 작업증명 난이도 (NIP-13, 0 = 끔)", "number"],
+  ["created_at_max_past", "created_at 과거 허용치 (초, 0 = 무제한)", "number"],
+  ["created_at_max_future", "created_at 미래 허용치 (초, 0 = 무제한)", "number"],
+  ["max_blob_size_mb", "파일 1개 최대 크기 (MB)", "number"],
 ];
 
 // cols renders a <colgroup>; "" means "share whatever is left".

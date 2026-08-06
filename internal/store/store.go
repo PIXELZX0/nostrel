@@ -94,6 +94,10 @@ type Settings struct {
 	RelayDescription string `json:"relay_description"`
 	RelayIcon        string `json:"relay_icon"`
 	RelayBanner      string `json:"relay_banner"`
+	RelayContact     string `json:"relay_contact"`
+	// RelayPubkey is the operator's pubkey in NIP-11. Empty falls back to the
+	// pubkey of RELAY_SECRET_KEY, when there is one.
+	RelayPubkey string `json:"relay_pubkey"`
 
 	// Panel look, applied by the browser as CSS variables. RelayIcon doubles as
 	// the logo. Colours are "#rrggbb"; empty means the stylesheet's own value.
@@ -153,6 +157,17 @@ type Settings struct {
 	AcceptZapReceipts bool `json:"accept_zap_receipts"`
 	AcceptBadgeAwards bool `json:"accept_badge_awards"`
 
+	// ReadAuthRequired makes readers authenticate (NIP-42) and be whitelisted
+	// too, turning the relay private in both directions.
+	ReadAuthRequired bool `json:"read_auth_required"`
+
+	// MinPoW is the NIP-13 difficulty an event must commit to. 0 disables it.
+	MinPoW int `json:"min_pow"`
+	// CreatedAtMaxPast/Future bound created_at, in seconds (0 = unbounded).
+	// Advertised through the NIP-11 created_at limits.
+	CreatedAtMaxPast   int `json:"created_at_max_past"`
+	CreatedAtMaxFuture int `json:"created_at_max_future"`
+
 	// ExtraAdmins are pubkeys granted admin rights at runtime via NIP-86
 	// grantadmin, on top of the ADMIN_PUBKEYS environment variable.
 	ExtraAdmins []string `json:"extra_admins,omitempty"`
@@ -178,6 +193,8 @@ type Settings struct {
 	// S3PublicURL, when set, is the address clients are redirected to for
 	// downloads so the bytes never pass through the relay.
 	S3PublicURL string `json:"s3_public_url"`
+	// MaxBlobSizeMB caps a single upload.
+	MaxBlobSizeMB int `json:"max_blob_size_mb"`
 }
 
 // Redacted returns a copy safe to send to a browser: secrets become a short
@@ -223,6 +240,9 @@ func (s Settings) StorageFingerprint() string {
 	}, "\x00")
 }
 
+// MaxBlobSize is the upload cap in bytes.
+func (s Settings) MaxBlobSize() int64 { return int64(s.MaxBlobSizeMB) << 20 }
+
 // KindAllowed applies the kind policy.
 func (s Settings) KindAllowed(kind int) bool {
 	if len(s.AllowedKinds) > 0 {
@@ -231,8 +251,13 @@ func (s Settings) KindAllowed(kind int) bool {
 	return !slices.Contains(s.DisallowedKinds, kind)
 }
 
+// DefaultSettings is what a relay runs on before an admin has touched the
+// panel. Settings() layers the stored row on top of it, so a field added in a
+// later release gets its default on an existing database too.
 func DefaultSettings() Settings {
 	return Settings{
+		RelayName:        "nostrel",
+		RelayDescription: "a paid whitelist relay",
 		AdmissionSats:    1000,
 		SubscriptionSats: 2000,
 		PeriodDays:       30,
@@ -241,8 +266,22 @@ func DefaultSettings() Settings {
 		Nip46Relays:      "wss://relay.nsec.app,wss://nos.lol",
 		ThemeBgColor:     "#121417",
 		ThemeAccent:      "#f7931a",
+		// mock settles its own invoices: harmless for a relay nobody has
+		// configured yet, and main() warns loudly about it on every start.
+		// LocalPath is deliberately left empty: that means DefaultBlobPath, the
+		// directory the caller of blobs.New passes in.
+		PaymentProvider: "mock",
+		StorageBackend:  "local",
+		MaxBlobSizeMB:   25,
+		// 15 minutes: enough for a client with a wrong clock, not enough to
+		// backdate anything meaningfully.
+		CreatedAtMaxFuture: 900,
 	}
 }
+
+// DefaultBlobPath is where uploads land until an admin points storage
+// somewhere else. Relative to the working directory (/data in the image).
+const DefaultBlobPath = "./blobs"
 
 var ddls = []string{
 	`CREATE TABLE IF NOT EXISTS accounts (
@@ -434,39 +473,6 @@ func (s *Store) Settings() (Settings, error) {
 		return Settings{}, fmt.Errorf("settings json: %w", err)
 	}
 	return st, nil
-}
-
-// EnsurePaymentDefaults seeds the lightning backend from the environment the
-// first time the relay starts. Afterwards the admin panel owns these values and
-// the environment is only a fallback.
-func (s *Store) EnsurePaymentDefaults(provider, lnbitsURL, lnbitsKey, nwcURI string) error {
-	settings, err := s.Settings()
-	if err != nil {
-		return err
-	}
-	if settings.PaymentProvider != "" {
-		return nil
-	}
-	settings.PaymentProvider = provider
-	settings.LNbitsURL = lnbitsURL
-	settings.LNbitsInvoiceKey = lnbitsKey
-	settings.NWCURI = nwcURI
-	return s.SaveSettings(settings)
-}
-
-// EnsureStorageDefaults seeds the media backend on first start. Like the
-// payment settings, the admin panel owns these afterwards.
-func (s *Store) EnsureStorageDefaults(backend, localPath string) error {
-	settings, err := s.Settings()
-	if err != nil {
-		return err
-	}
-	if settings.StorageBackend != "" {
-		return nil
-	}
-	settings.StorageBackend = backend
-	settings.LocalPath = localPath
-	return s.SaveSettings(settings)
 }
 
 func (s *Store) SaveSettings(st Settings) error {

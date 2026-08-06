@@ -24,7 +24,7 @@ func newStorage(t *testing.T) (*Storage, *store.Store) {
 	}
 	t.Cleanup(st.Close)
 
-	s, err := New(st, filepath.Join(dir, "blobs"), 1<<20)
+	s, err := New(st, filepath.Join(dir, "blobs"))
 	if err != nil {
 		t.Fatalf("creating storage: %v", err)
 	}

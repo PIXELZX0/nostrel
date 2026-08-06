@@ -19,9 +19,6 @@ func newService(t *testing.T) (*Service, *store.Store) {
 		t.Fatalf("opening store: %v", err)
 	}
 	t.Cleanup(st.Close)
-	if err := st.EnsurePaymentDefaults("mock", "", "", ""); err != nil {
-		t.Fatalf("seeding payment settings: %v", err)
-	}
 	return New(st, payments.NewResolver(st, ""), log.New(io.Discard, "", 0)), st
 }
 

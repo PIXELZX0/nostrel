@@ -67,23 +67,24 @@ func (r *Relay) rejectEvent(ctx context.Context, evt *nostr.Event) (bool, string
 		return true, "blocked: this relay does not accept kind " + strconv.Itoa(evt.Kind)
 	}
 
-	if r.cfg.MinPoW > 0 {
+	if settings.MinPoW > 0 {
 		// CommittedDifficulty only counts leading zeroes that the author
 		// committed to in the nonce tag, so a lucky id can't pass for work.
-		if nip13.CommittedDifficulty(evt) < r.cfg.MinPoW {
-			return true, "pow: need at least " + strconv.Itoa(r.cfg.MinPoW) + " bits of difficulty"
+		if nip13.CommittedDifficulty(evt) < settings.MinPoW {
+			return true, "pow: need at least " + strconv.Itoa(settings.MinPoW) + " bits of difficulty"
 		}
 	}
 
 	now := time.Now()
-	if r.cfg.MaxFutureDrift > 0 && evt.CreatedAt.Time().After(now.Add(r.cfg.MaxFutureDrift)) {
+	createdAt := int64(evt.CreatedAt)
+	if settings.CreatedAtMaxFuture > 0 && createdAt > now.Unix()+int64(settings.CreatedAtMaxFuture) {
 		return true, "invalid: created_at is too far in the future"
 	}
 	// NIP-59 gift wraps deliberately backdate created_at by up to two days to
 	// hide when the message was really sent, so the past limit must not apply
 	// to them or private messaging breaks whenever an admin sets one.
-	if r.cfg.MaxPastDrift > 0 && evt.Kind != nostr.KindGiftWrap &&
-		evt.CreatedAt.Time().Before(now.Add(-r.cfg.MaxPastDrift)) {
+	if settings.CreatedAtMaxPast > 0 && evt.Kind != nostr.KindGiftWrap &&
+		createdAt < now.Unix()-int64(settings.CreatedAtMaxPast) {
 		return true, "invalid: created_at is too far in the past"
 	}
 
@@ -118,8 +119,8 @@ func (r *Relay) rejectEvent(ctx context.Context, evt *nostr.Event) (bool, string
 }
 
 // rejectFilter keeps private-kind events readable only by their participants,
-// and (when READ_AUTH_REQUIRED is set) restricts all reads to whitelisted
-// pubkeys.
+// and (when the panel's read_auth_required is on) restricts all reads to
+// whitelisted pubkeys.
 func (r *Relay) rejectFilter(ctx context.Context, filter nostr.Filter) (bool, string) {
 	authed := relaycore.GetAuthed(ctx)
 
@@ -132,7 +133,7 @@ func (r *Relay) rejectFilter(ctx context.Context, filter nostr.Filter) (bool, st
 		}
 	}
 
-	if !r.cfg.ReadAuthRequired {
+	if !r.readAuthRequired() {
 		return false, ""
 	}
 	if authed == "" {

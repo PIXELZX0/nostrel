@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -52,11 +51,7 @@ func main() {
 		return
 	}
 
-	// the environment seeds the lightning backend once; after that the admin
-	// panel owns it, so it can be changed without a restart
-	if err := st.EnsurePaymentDefaults(cfg.PaymentProvider, cfg.LNbitsURL, cfg.LNbitsInvoiceKey, cfg.NWCURI); err != nil {
-		logger.Fatalf("payments: %v", err)
-	}
+	// the lightning backend is panel-owned, so it can be changed without a restart
 	providers := payments.NewResolver(st, cfg.PanelURL+"/webhook/lnbits")
 	switch providers.Name() {
 	case "mock":
@@ -76,10 +71,7 @@ func main() {
 
 	// media storage powers both Blossom and NIP-96; without it the relay still
 	// works, it just stores no files
-	if err := st.EnsureStorageDefaults(cfg.BlobBackend, cfg.BlobPath); err != nil {
-		logger.Fatalf("storage: %v", err)
-	}
-	storage, err := blobs.New(st, cfg.BlobPath, cfg.MaxBlobSize)
+	storage, err := blobs.New(st, store.DefaultBlobPath)
 	if err != nil {
 		logger.Printf("media storage disabled: %v", err)
 		storage = nil
@@ -108,7 +100,7 @@ func main() {
 	go r.WatchMembership(ctx)
 
 	srv := &http.Server{
-		Addr:              net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
+		Addr:              ":" + strconv.Itoa(cfg.Port),
 		Handler:           r.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
@@ -157,7 +149,7 @@ func migrateBlobs(st *store.Store, cfg *config.Config, logger *log.Logger, args 
 	if err != nil {
 		return err
 	}
-	storage, err := blobs.New(st, cfg.BlobPath, cfg.MaxBlobSize)
+	storage, err := blobs.New(st, store.DefaultBlobPath)
 	if err != nil {
 		return err
 	}

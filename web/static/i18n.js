@@ -156,6 +156,9 @@ const dict = {
     "설명": "Description",
     "로고 · 아이콘 URL": "Logo / icon URL",
     "배너 URL": "Banner URL",
+    "운영자 연락처 (mailto: 등)": "Operator contact (mailto:, …)",
+    "운영자 pubkey (hex, 비우면 릴레이 키)":
+      "Operator pubkey (hex; empty = the relay's own key)",
     "배경색": "Background colour",
     "포인트 색": "Accent colour",
     "배경 이미지 URL": "Background image URL",
@@ -178,6 +181,15 @@ const dict = {
       "Anyone may request an invite code (NIP-43 kind 28935)",
     "자동 초대 기간 (일)": "Auto-invite period (days)",
     "자동 초대 용량 (MB)": "Auto-invite storage (MB)",
+    "읽기도 인증·화이트리스트 필요 (NIP-42)":
+      "Reading also needs auth and a whitelist entry (NIP-42)",
+    "최소 작업증명 난이도 (NIP-13, 0 = 끔)":
+      "Minimum proof-of-work difficulty (NIP-13, 0 = off)",
+    "created_at 과거 허용치 (초, 0 = 무제한)":
+      "created_at past limit (seconds, 0 = unbounded)",
+    "created_at 미래 허용치 (초, 0 = 무제한)":
+      "created_at future limit (seconds, 0 = unbounded)",
+    "파일 1개 최대 크기 (MB)": "Maximum size of one file (MB)",
     "짧은 이름 할증은": "The short-name premium is a",
     "길이:배수": "length:multiplier",
     "목록입니다. 예를 들어": "list. For example,",

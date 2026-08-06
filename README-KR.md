@@ -20,7 +20,7 @@
 - [x] **NIP-05** DNS 기반 식별자 — 도메인별로 이름 판매 *(조건부)*
 - [x] **NIP-09** 이벤트 삭제 — 용량 환불 포함
 - [x] **NIP-11** 릴레이 정보 문서 — 설정에서 실시간 생성
-- [x] **NIP-13** Proof of Work *(조건부: `MIN_POW > 0`)*
+- [x] **NIP-13** Proof of Work *(조건부: 패널 `min_pow > 0`)*
 - [x] **NIP-17** 비공개 DM
 - [x] **NIP-40** 이벤트 만료 — 만료 후 GC가 용량 회수
 - [x] **NIP-42** AUTH
@@ -55,10 +55,10 @@ Blossom BUD-01·02·04·05·06·09도 구현되어 있다 ([미디어 호스팅]
 | 05 | DNS 기반 식별자 | `/.well-known/nostr.json`, 도메인별로 이름을 판매 |
 | 09 | 이벤트 삭제 | 삭제 시 용량 환불 |
 | 11 | 릴레이 정보 문서 | 요금·제한·정책을 설정에서 실시간 생성 |
-| 13 | Proof of Work | `MIN_POW` 설정 시 활성화, committed difficulty 검사 |
+| 13 | Proof of Work | 패널 `min_pow` 설정 시 활성화, committed difficulty 검사 |
 | 17 | 비공개 DM | NIP-59 gift wrap 위에서 동작 |
 | 40 | 이벤트 만료 | 만료 즉시 조회에서 제외, 이후 GC가 디스크·용량 회수 |
-| 42 | AUTH | DM 조회, `READ_AUTH_REQUIRED`, NIP-43 요청 |
+| 42 | AUTH | DM 조회, 패널 `read_auth_required`, NIP-43 요청 |
 | 43 | 릴레이 접근·초대 코드 | `RELAY_SECRET_KEY` 설정 시 (아래 참고) |
 | 44 | 암호화 (v2) | 패널의 NIP-46 통신에 사용 |
 | 45 | COUNT | |
@@ -80,7 +80,7 @@ NIP-11 `supported_nips`는 **실제 상태를 그대로** 내보낸다. 항상 �
 
 | NIP | 조건 |
 |---|---|
-| 13 | `MIN_POW > 0` |
+| 13 | 패널 `min_pow > 0` |
 | 43 | `RELAY_SECRET_KEY` 설정됨 |
 | 05 | 판매 중인 도메인이 하나 이상 |
 | 57 / 58 | 각 제3자 이벤트 토글 |
@@ -117,7 +117,7 @@ NIP-11 `supported_nips`는 **실제 상태를 그대로** 내보낸다. 항상 �
 openssl rand -hex 32   # RELAY_SECRET_KEY
 ```
 
-**이 키는 릴레이의 신원이다.** 유출되면 남이 우리 이름으로 멤버십 목록을 위조할 수 있다. 그래서 DB에 넣지 않고 패널에서도 편집하지 않는다 — 환경변수 전용이다. `RELAY_PUBKEY`가 비어 있으면 이 키에서 유도해 채운다.
+**이 키는 릴레이의 신원이다.** 유출되면 남이 우리 이름으로 멤버십 목록을 위조할 수 있다. 그래서 DB에 넣지 않고 패널에서도 편집하지 않는다 — 환경변수 전용이다. 패널의 운영자 pubkey가 비어 있으면 NIP-11은 이 키의 pubkey로 대체한다.
 
 | 흐름 | 어떻게 |
 |---|---|
@@ -190,9 +190,9 @@ DNS는 `*.sites.example.com`을 이 서버로 향하게 하면 된다. 패널 �
 
 ### gift wrap (NIP-59)
 
-kind 1059·13은 발신자·수신자만 조회할 수 있다(`READ_AUTH_REQUIRED`와 무관하게 NIP-42 인증 필요). NIP-17 비공개 DM이 이 위에서 동작한다.
+kind 1059·13은 발신자·수신자만 조회할 수 있다(패널 `read_auth_required`와 무관하게 NIP-42 인증 필요). NIP-17 비공개 DM이 이 위에서 동작한다.
 
-gift wrap은 실제 발송 시각을 숨기려고 `created_at`을 **최대 이틀까지 과거로** 무작위 설정한다. 그래서 `CREATED_AT_MAX_PAST`를 설정해도 kind 1059에는 적용하지 않는다 — 적용하면 그 값을 켜는 순간 비공개 DM이 조용히 깨진다.
+gift wrap은 실제 발송 시각을 숨기려고 `created_at`을 **최대 이틀까지 과거로** 무작위 설정한다. 그래서 `created_at` 과거 허용치를 설정해도 kind 1059에는 적용하지 않는다 — 적용하면 그 값을 켜는 순간 비공개 DM이 조용히 깨진다.
 
 **미지원**: NIP-29(릴레이 기반 그룹). 별도 프레임워크([relay29](https://github.com/fiatjaf/relay29))가 필요하고 그룹 자체 권한 모델이 유료 화이트리스트와 충돌한다. 필요하면 그룹 전용 인스턴스를 따로 띄우는 편이 낫다.
 
@@ -207,13 +207,32 @@ export $(grep -v '^#' .env | xargs)
 
 릴레이 엔진은 외부 의존성이 아니라 `internal/relaycore`에 들어 있다. khatru에서 출발했지만 우리 코드로 흡수했고, 따라갈 상류가 없다 — 배경은 `internal/relaycore/ORIGIN.md`.
 
-로컬에서 결제 없이 흐름만 보려면:
+로컬에서 결제 없이 흐름만 보려면 그냥 실행하면 된다. 새 DB는 `mock` 결제 백엔드로 시작하고, mock은 발행 즉시 결제된 것으로 처리한다:
 
 ```bash
-PAYMENT_PROVIDER=mock PANEL_URL=http://localhost:3334 ./nostrel
+PANEL_URL=http://localhost:3334 ./nostrel
 ```
 
-mock은 발행 즉시 결제된 것으로 처리한다. **운영에서 절대 사용 금지.**
+**운영에서 mock을 켜둔 채로 두지 말 것.** 돈을 받기 전에 `관리자 → 결제 백엔드`에서 바꾼다. 바꾸기 전까지는 시작할 때마다 경고를 남긴다.
+
+### 설정이 어디에 있나
+
+환경변수에는 DB를 열고 관리자가 로그인하기 전에 알아야 하는 값만 둔다. **나머지는 전부 관리자 패널에서 편집하고 DB에 저장**하므로 재시작 없이 바뀐다.
+
+| 변수 | 의미 |
+|---|---|
+| `RELAY_PORT` | 수신 포트 (모든 인터페이스) |
+| `DB_PATH` | SQLite 파일. 이벤트·계정·설정이 전부 여기 들어간다 |
+| `PANEL_URL` | 패널의 공개 https 주소. NIP-98 로그인을 이 값과 대조한다 |
+| `SERVICE_URL` | 클라이언트에 광고할 공개 wss:// 주소 |
+| `RELAY_SECRET_KEY` | 릴레이의 NIP-43 서명키 — 릴레이의 신원이라 DB에 넣지 않는다 |
+| `ADMIN_PUBKEYS` | 패널·NIP-86 접근을 허용할 hex pubkey (쉼표 구분) |
+| `ADMIN_PASSWORD_HASH` | 대체 비밀번호 로그인 (`nostrel hash-password '…'`) |
+| `SESSION_SECRET` | 비밀번호 세션 쿠키 서명용. 없으면 재시작 시 세션이 사라진다 |
+
+패널이 소유하는 값(`관리자`): 릴레이 이름·설명·아이콘·배너, 운영자 연락처·pubkey, 테마, 보관 기간, 국가·언어·주제, 요금, NIP-05 할증, NIP-46 relay, nsite 도메인, 자동 초대, kind 정책, 제3자 zap·배지 허용, `read_auth_required`, `min_pow`, `created_at` 허용치, 결제 백엔드와 자격증명, 미디어 백엔드와 `max_blob_size_mb`.
+
+> **환경변수로 이 값들을 읽던 빌드에서 올라올 때:** 옮겨간 설정은 `.env`에서 자동으로 이전되지 *않는다*. 기본값으로 올라온 뒤 패널이 소유한다. `READ_AUTH_REQUIRED=true`, `MIN_POW`, `created_at` 허용치, 릴레이 이름, 결제 백엔드를 환경변수로 쓰고 있었다면 첫 시작 후 `관리자`에서 다시 설정한다. 비공개 릴레이를 다시 설정하지 않으면 **누구나 읽을 수 있는 상태로 올라온다.**
 
 Docker:
 
@@ -379,7 +398,7 @@ curl -H 'Host: example.com' 'https://relay.example.com/.well-known/nostr.json?na
 
 ## 결제 백엔드 설정
 
-패널 `관리자 → 결제 백엔드`에서 LNbits / NWC / mock을 고르고 자격증명을 넣는다. **저장하면 재시작 없이 다음 인보이스부터 적용**된다. `PAYMENT_PROVIDER` 등 환경변수는 최초 1회 DB를 채우는 초기값일 뿐, 그 뒤로는 패널이 소유한다.
+패널 `관리자 → 결제 백엔드`에서 LNbits / NWC / mock을 고르고 자격증명을 넣는다. **저장하면 재시작 없이 다음 인보이스부터 적용**된다. 이에 해당하는 환경변수는 없다. 새로 설치하면 `mock`으로 시작하고, 실제 백엔드를 설정할 때까지 부팅 로그가 매번 경고한다.
 
 - **연결 테스트** 버튼: LNbits는 지갑 조회(`GET /api/v1/wallet`), NWC는 `get_info`를 호출해 자격증명·권한을 확인한다. 돈은 움직이지 않는다. 저장 전에 시험할 수 있다.
 - **비밀값 취급**: 인보이스 키와 NWC 연결 문자열은 서버에만 있고 API는 끝 4자리만(`••••1234`) 돌려준다. 그대로 두고 저장하면 기존 값이 유지된다.
@@ -388,7 +407,7 @@ curl -H 'Host: example.com' 'https://relay.example.com/.well-known/nostr.json?na
 
 ## 미디어 호스팅
 
-업로드는 **이벤트와 같은 용량 쿼터**를 소비하므로, 사용자가 산 MB 안에서 글과 파일을 함께 쓴다. 쿼터를 넘기면 402를 돌려준다. 파일 개당 상한은 `MAX_BLOB_SIZE_MB`.
+업로드는 **이벤트와 같은 용량 쿼터**를 소비하므로, 사용자가 산 MB 안에서 글과 파일을 함께 쓴다. 쿼터를 넘기면 402를 돌려준다. 파일 개당 상한은 패널의 `max_blob_size_mb`(기본 25MB).
 
 ### 저장 위치
 
@@ -396,7 +415,7 @@ curl -H 'Host: example.com' 'https://relay.example.com/.well-known/nostr.json?na
 
 | 백엔드 | 설정 | 비고 |
 |---|---|---|
-| 내장 | 저장 경로 | 서버 디스크. 기본값, `BLOB_PATH`가 초기값 |
+| 내장 | 저장 경로 | 서버 디스크. 기본값, 패널에서 바꾸기 전까지 `./blobs` |
 | S3 호환 | 엔드포인트·버킷·리전·접두사·키 | AWS S3, MinIO, Cloudflare R2, Backblaze B2 등 |
 
 - **연결 테스트**: 프로브 객체를 쓰고 읽고 지워 자격증명과 권한을 실제로 확인한다.
@@ -544,7 +563,7 @@ E2E는 [nak](https://github.com/fiatjaf/nak)으로:
 
 ```bash
 nak event -k 1 -c "hello" --sec $SK ws://localhost:3334        # 미결제면 거부
-nak event -k 1 -c "hi" --pow 8 --sec $SK ws://localhost:3334   # MIN_POW=8일 때
+nak event -k 1 -c "hi" --pow 8 --sec $SK ws://localhost:3334   # min_pow가 8일 때
 nak req -k 1059 -p $PK --auth --sec $SK ws://localhost:3334    # DM은 당사자만
 nak count -k 1 ws://localhost:3334                             # NIP-45
 nak req -k 1 --search "keyword" ws://localhost:3334            # NIP-50

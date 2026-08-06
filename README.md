@@ -20,7 +20,7 @@ A checked box means the relay implements it at the protocol level. *Conditional*
 - [x] **NIP-05** DNS-based identifiers — names sold per domain *(conditional)*
 - [x] **NIP-09** Event deletion — refunds the quota
 - [x] **NIP-11** Relay information document — generated live from settings
-- [x] **NIP-13** Proof of Work *(conditional: `MIN_POW > 0`)*
+- [x] **NIP-13** Proof of Work *(conditional: panel `min_pow > 0`)*
 - [x] **NIP-17** Private DMs
 - [x] **NIP-40** Event expiration — GC reclaims the quota afterwards
 - [x] **NIP-42** AUTH
@@ -55,10 +55,10 @@ Blossom BUD-01/02/04/05/06/09 are implemented too — see [media hosting](#media
 | 05 | DNS-based identifiers | `/.well-known/nostr.json`, names sold per domain |
 | 09 | Event deletion | deleting refunds the quota |
 | 11 | Relay information document | fees, limits and policy generated live from settings |
-| 13 | Proof of Work | on when `MIN_POW` is set; committed difficulty is checked |
+| 13 | Proof of Work | on when the panel's `min_pow` is set; committed difficulty is checked |
 | 17 | Private DMs | rides on NIP-59 gift wrap |
 | 40 | Event expiration | dropped from queries the moment it expires; GC reclaims disk and quota after |
-| 42 | AUTH | DM reads, `READ_AUTH_REQUIRED`, NIP-43 requests |
+| 42 | AUTH | DM reads, the panel's `read_auth_required`, NIP-43 requests |
 | 43 | Relay access, invite codes | when `RELAY_SECRET_KEY` is set (see below) |
 | 44 | Encryption (v2) | used by the panel's NIP-46 traffic |
 | 45 | COUNT | |
@@ -80,7 +80,7 @@ NIP-11 `supported_nips` reports **the actual state**. The always-on set (01, 04,
 
 | NIP | Condition |
 |---|---|
-| 13 | `MIN_POW > 0` |
+| 13 | panel `min_pow > 0` |
 | 43 | `RELAY_SECRET_KEY` is set |
 | 05 | at least one domain on sale |
 | 57 / 58 | each third-party event toggle |
@@ -117,7 +117,7 @@ The way in without paying: beta invites, invites for friends, event coupons. It 
 openssl rand -hex 32   # RELAY_SECRET_KEY
 ```
 
-**That key is the relay's identity.** Leak it and somebody else can forge membership lists in our name. That is why it never goes into the database and is not editable from the panel — environment only. When `RELAY_PUBKEY` is empty it is derived from this key.
+**That key is the relay's identity.** Leak it and somebody else can forge membership lists in our name. That is why it never goes into the database and is not editable from the panel — environment only. When the panel's operator pubkey is empty, NIP-11 falls back to the pubkey of this key.
 
 | Flow | How |
 |---|---|
@@ -190,9 +190,9 @@ For DNS, point `*.sites.example.com` at this server. The panel's own host is una
 
 ### Gift wrap (NIP-59)
 
-Kinds 1059 and 13 are readable only by sender and recipient (NIP-42 auth required regardless of `READ_AUTH_REQUIRED`). NIP-17 private DMs ride on top of this.
+Kinds 1059 and 13 are readable only by sender and recipient (NIP-42 auth required regardless of `read_auth_required`). NIP-17 private DMs ride on top of this.
 
-Gift wraps randomize `created_at` **up to two days into the past** to hide the real send time. So `CREATED_AT_MAX_PAST` is deliberately not applied to kind 1059 — applying it would silently break private DMs the moment that setting is turned on.
+Gift wraps randomize `created_at` **up to two days into the past** to hide the real send time. So the `created_at` past limit is deliberately not applied to kind 1059 — applying it would silently break private DMs the moment that setting is turned on.
 
 **Not supported**: NIP-29 (relay-based groups). It needs a separate framework ([relay29](https://github.com/fiatjaf/relay29)) and the groups carry their own permission model, which collides with a paid whitelist. If you need it, run a dedicated instance for groups.
 
@@ -207,13 +207,32 @@ export $(grep -v '^#' .env | xargs)
 
 The relay engine is not an external dependency, it lives in `internal/relaycore`. It started from khatru but has been absorbed into our own code, and there is no upstream to follow — background in `internal/relaycore/ORIGIN.md`.
 
-To watch the flow locally without payments:
+To watch the flow locally without payments, just start it — a fresh database ships with the `mock` payment backend, which treats every invoice as paid the moment it is issued:
 
 ```bash
-PAYMENT_PROVIDER=mock PANEL_URL=http://localhost:3334 ./nostrel
+PANEL_URL=http://localhost:3334 ./nostrel
 ```
 
-Mock treats every invoice as paid the moment it is issued. **Never use it in production.**
+**Never leave mock on in production.** Switch it under `Admin → Payment backend` before taking money; until you do, every start logs a warning.
+
+### Configuration: what lives where
+
+The environment holds only what has to be known before the database is open and an admin can log in. **Everything else is edited in the admin panel and stored in the database**, so it changes without a restart.
+
+| Variable | What it is |
+|---|---|
+| `RELAY_PORT` | port to listen on (all interfaces) |
+| `DB_PATH` | SQLite file; events, accounts and settings all live in it |
+| `PANEL_URL` | public https address of the panel; NIP-98 logins are checked against it |
+| `SERVICE_URL` | public wss:// address advertised to clients |
+| `RELAY_SECRET_KEY` | the relay's NIP-43 signing key — its identity, never stored in the database |
+| `ADMIN_PUBKEYS` | comma separated hex pubkeys allowed into the panel and NIP-86 |
+| `ADMIN_PASSWORD_HASH` | fallback password login (`nostrel hash-password '…'`) |
+| `SESSION_SECRET` | signs password session cookies; without it sessions die on restart |
+
+Panel-owned, in `Admin`: relay name, description, icon, banner, operator contact and pubkey, theme, retention, countries, languages, topics, prices, NIP-05 premium tiers, NIP-46 relays, nsite domains, auto-invite, kind policy, third-party zap/badge acceptance, `read_auth_required`, `min_pow`, the `created_at` limits, the payment backend and its credentials, and the media backend including `max_blob_size_mb`.
+
+> **Upgrading from a build that read these from the environment:** the moved settings are *not* migrated out of `.env` — they come up on their defaults and are then owned by the panel. If you were running with `READ_AUTH_REQUIRED=true`, `MIN_POW`, custom `created_at` limits, a relay name or a payment backend in the environment, set them again under `Admin` on the first start. A private relay that is not reconfigured comes back **readable by anyone**.
 
 Docker:
 
@@ -372,7 +391,7 @@ A name can be bought without a relay account. Buying a name does not create an a
 
 ## Configuring the payment backend
 
-Pick LNbits / NWC / mock and enter the credentials under `Admin → Payment backend`. **Saving applies from the next invoice, with no restart.** Environment variables such as `PAYMENT_PROVIDER` are only the seed values that populate the database on the very first start; after that the panel owns them.
+Pick LNbits / NWC / mock and enter the credentials under `Admin → Payment backend`. **Saving applies from the next invoice, with no restart.** There is no environment variable for this: a fresh install starts on `mock`, and the startup log says so on every boot until a real backend is configured.
 
 - **Test connection** button: for LNbits it queries the wallet (`GET /api/v1/wallet`), for NWC it calls `get_info`, verifying credentials and permissions. No money moves. You can test before saving.
 - **Secret handling**: the invoice key and the NWC connection string stay on the server, and the API returns only the last four characters (`••••1234`). Leave the field alone and saving keeps the existing value.
@@ -381,7 +400,7 @@ Pick LNbits / NWC / mock and enter the credentials under `Admin → Payment back
 
 ## Media hosting
 
-Uploads draw on **the same quota as events**, so a user spends the MB they bought on posts and files together. Going over returns a 402. The per-file ceiling is `MAX_BLOB_SIZE_MB`.
+Uploads draw on **the same quota as events**, so a user spends the MB they bought on posts and files together. Going over returns a 402. The per-file ceiling is the panel's `max_blob_size_mb` (25 MB by default).
 
 ### Where files are stored
 
@@ -389,7 +408,7 @@ Chosen under `Admin → File storage`. Applies to new uploads immediately, **wit
 
 | Backend | Settings | Notes |
 |---|---|---|
-| Built-in | storage path | server disk; the default, seeded from `BLOB_PATH` |
+| Built-in | storage path | server disk; the default, `./blobs` until the panel says otherwise |
 | S3-compatible | endpoint, bucket, region, prefix, keys | AWS S3, MinIO, Cloudflare R2, Backblaze B2, … |
 
 - **Test connection**: writes, reads back and deletes a probe object, so credentials and permissions are actually verified.
@@ -539,7 +558,7 @@ End-to-end with [nak](https://github.com/fiatjaf/nak):
 
 ```bash
 nak event -k 1 -c "hello" --sec $SK ws://localhost:3334        # rejected without payment
-nak event -k 1 -c "hi" --pow 8 --sec $SK ws://localhost:3334   # when MIN_POW=8
+nak event -k 1 -c "hi" --pow 8 --sec $SK ws://localhost:3334   # when min_pow is 8
 nak req -k 1059 -p $PK --auth --sec $SK ws://localhost:3334    # DMs are for the parties only
 nak count -k 1 ws://localhost:3334                             # NIP-45
 nak req -k 1 --search "keyword" ws://localhost:3334            # NIP-50

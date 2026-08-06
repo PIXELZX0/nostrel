@@ -76,7 +76,7 @@ func TestStorageReloadSwitchesBackend(t *testing.T) {
 	}
 	t.Cleanup(st.Close)
 
-	storage, err := New(st, filepath.Join(dir, "blobs"), 1<<20)
+	storage, err := New(st, filepath.Join(dir, "blobs"))
 	if err != nil {
 		t.Fatal(err)
 	}

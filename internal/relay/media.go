@@ -80,22 +80,25 @@ func (r *Relay) EnableBlossom(storage *blobs.Storage, index *blobs.Index, servic
 			return false, "", 0
 		})
 
-	if r.cfg.ReadAuthRequired {
-		isMember := func(auth *nostr.Event) (bool, string, int) {
-			if auth == nil || !r.whitelisted(auth.PubKey) {
-				return true, "this relay only serves media to its members", 401
-			}
+	// Media follows the relay's read policy, which an admin can flip in the
+	// panel at any time — so the check happens per request, not per start.
+	isMember := func(auth *nostr.Event) (bool, string, int) {
+		if !r.readAuthRequired() {
 			return false, "", 0
 		}
-		bs.RejectGet = append(bs.RejectGet,
-			func(ctx context.Context, auth *nostr.Event, _ string, _ string) (bool, string, int) {
-				return isMember(auth)
-			})
-		bs.RejectList = append(bs.RejectList,
-			func(ctx context.Context, auth *nostr.Event, _ string) (bool, string, int) {
-				return isMember(auth)
-			})
+		if auth == nil || !r.whitelisted(auth.PubKey) {
+			return true, "this relay only serves media to its members", 401
+		}
+		return false, "", 0
 	}
+	bs.RejectGet = append(bs.RejectGet,
+		func(ctx context.Context, auth *nostr.Event, _ string, _ string) (bool, string, int) {
+			return isMember(auth)
+		})
+	bs.RejectList = append(bs.RejectList,
+		func(ctx context.Context, auth *nostr.Event, _ string) (bool, string, int) {
+			return isMember(auth)
+		})
 }
 
 // whitelisted reports whether the relay knows this pubkey at all — through

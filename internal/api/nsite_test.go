@@ -76,7 +76,7 @@ func newNsiteServer(t *testing.T) (http.Handler, *store.Store, *blobs.Storage) {
 		t.Fatal(err)
 	}
 
-	storage, err := blobs.New(st, filepath.Join(dir, "blobs"), 10*store.MB)
+	storage, err := blobs.New(st, filepath.Join(dir, "blobs"))
 	if err != nil {
 		t.Fatal(err)
 	}

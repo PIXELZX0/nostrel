@@ -264,7 +264,14 @@ func TestGiftWrapIgnoresThePastLimit(t *testing.T) {
 	r, st := newGate(t)
 	ctx := context.Background()
 	fundedAccount(t, st, me)
-	r.cfg.MaxPastDrift = time.Hour
+	settings, err := st.Settings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.CreatedAtMaxPast = 3600
+	if err := st.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
 
 	old := nostr.Timestamp(time.Now().Add(-47 * time.Hour).Unix())
 

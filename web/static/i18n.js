@@ -267,7 +267,16 @@ const dict = {
     "가격": "Price",
     "도메인의 DNS를 이 서버로 향하게 하고, 리버스 프록시가 Host 헤더를 그대로 넘겨야":
       "Point the domain's DNS at this server and have the reverse proxy pass the Host header through, so that",
-    "이 그 도메인의 이름을 응답합니다.": "answers with that domain's names.",
+    "이 그 도메인의 이름을 응답합니다. 테스트 버튼은 서버가 바깥에서 그 주소를 직접 불러 확인합니다.":
+      "answers with that domain's names. The test button has the server fetch that URL from the outside.",
+    "테스트": "Test",
+    "{0} 확인 중…": "Checking {0}…",
+    "응답 코드": "Status",
+    "이 서버의 답": "This server says",
+    "도메인의 답": "The domain says",
+    "CORS 헤더 없음": "No CORS header",
+    "정상": "Working",
+    "실패": "Failed",
     "차단한 이름": "Blocked names",
     "판매 금지할 이름 (예: admin)": "name to keep off the market (e.g. admin)",
     "사유 (선택)": "reason (optional)",

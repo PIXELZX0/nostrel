@@ -1,12 +1,15 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"nostrel/internal/billing"
 	"nostrel/internal/store"
@@ -34,6 +37,7 @@ func (s *Server) registerNip05(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/nip05/names", s.admin(s.handleListNip05Names))
 	mux.HandleFunc("PUT /api/admin/nip05/names/{domain}/{name}", s.admin(s.handleSaveNip05Name))
 	mux.HandleFunc("DELETE /api/admin/nip05/names/{domain}/{name}", s.admin(s.handleDeleteNip05Name))
+	mux.HandleFunc("GET /api/admin/nip05/verify/{domain}", s.admin(s.handleVerifyNip05Domain))
 	mux.HandleFunc("GET /api/admin/nip05/blocked", s.admin(s.handleListBlockedNames))
 	mux.HandleFunc("PUT /api/admin/nip05/blocked/{name}", s.admin(s.handleBlockName))
 	mux.HandleFunc("DELETE /api/admin/nip05/blocked/{name}", s.admin(s.handleUnblockName))
@@ -231,6 +235,114 @@ func (s *Server) handleDeleteNip05Domain(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// nip05Probe fetches a domain's own nostr.json. Its own client so the timeout
+// is short: an admin is waiting on the answer.
+var nip05Probe = &http.Client{Timeout: 10 * time.Second}
+
+// handleVerifyNip05Domain fetches https://domain/.well-known/nostr.json from
+// the outside and reports what came back. DNS and the reverse proxy are the two
+// things that break a domain, and neither is visible from inside this process —
+// a name that resolves here still answers nothing if the proxy rewrites Host.
+//
+// This makes the server fetch a URL an admin chose, which is the point: the
+// scheme is fixed to https and the host has to look like a hostname.
+func (s *Server) handleVerifyNip05Domain(w http.ResponseWriter, r *http.Request) {
+	domain := strings.ToLower(strings.TrimSpace(r.PathValue("domain")))
+	if !nip05DomainRE.MatchString(domain) {
+		writeErr(w, http.StatusBadRequest, "domain must be a bare hostname, without scheme or port")
+		return
+	}
+
+	// Probe with a name that actually resolves here, so the answer is checked
+	// against a pubkey and not merely parsed. Failing that, "_" still proves the
+	// endpoint is reachable and well-formed.
+	name := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name")))
+	if name == "" {
+		name = s.probeNameFor(domain)
+	}
+	if !nip05NameRE.MatchString(name) {
+		writeErr(w, http.StatusBadRequest, "invalid name")
+		return
+	}
+	expected, err := s.store.ResolveNip05(domain, name)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not look that name up")
+		return
+	}
+
+	url := "https://" + domain + "/.well-known/nostr.json?name=" + name
+	out := map[string]any{"url": url, "name": name, "expected": expected, "ok": false}
+	fail := func(problem string) {
+		out["problem"] = problem
+		writeJSON(w, http.StatusOK, out)
+	}
+
+	resp, err := nip05Probe.Get(url)
+	if err != nil {
+		fail("could not reach the domain: " + err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	out["status"] = resp.StatusCode
+	out["cors"] = resp.Header.Get("Access-Control-Allow-Origin") == "*"
+	if resp.StatusCode != http.StatusOK {
+		fail("the domain answered " + strconv.Itoa(resp.StatusCode) + ", not 200")
+		return
+	}
+
+	var doc struct {
+		Names map[string]string `json:"names"`
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		fail("could not read the answer: " + err.Error())
+		return
+	}
+	if err := json.Unmarshal(body, &doc); err != nil || doc.Names == nil {
+		fail("the answer was not a NIP-05 document — something else is serving this domain")
+		return
+	}
+
+	got := doc.Names[name]
+	out["got"] = got
+	switch {
+	case expected == "" && got == "":
+		// nothing is sold under this domain yet, so there is nothing to match
+		out["ok"] = true
+		out["problem"] = "the endpoint works, but no name is sold here yet to check against"
+	case got == "":
+		fail("the endpoint answered, but not with " + name + "@" + domain + " — Host is probably not passed through")
+		return
+	case got != expected:
+		fail("another server answers for this domain: it returned a different pubkey")
+		return
+	default:
+		out["ok"] = true
+	}
+	if !out["cors"].(bool) {
+		out["ok"] = false
+		out["problem"] = "the answer has no Access-Control-Allow-Origin: * header, so browser clients cannot read it"
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// probeNameFor picks a live name under domain to check the answer against, or
+// "_" when the domain has sold none.
+func (s *Server) probeNameFor(domain string) string {
+	names, err := s.store.ListNip05Names("", domain, 50, 0)
+	if err != nil {
+		return "_"
+	}
+	now := time.Now().Unix()
+	for _, n := range names {
+		if n.Live(now) {
+			return n.Name
+		}
+	}
+	return "_"
 }
 
 func (s *Server) handleListNip05Names(w http.ResponseWriter, r *http.Request) {

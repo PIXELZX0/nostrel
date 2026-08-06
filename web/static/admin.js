@@ -431,9 +431,31 @@ async function loadDomains() {
         <td><input class="f-price" type="number" value="${d.price_sats}"></td>
         <td><input class="f-days" type="number" value="${d.period_days}"></td>
         <td><input class="f-note" value="${esc(d.note)}"></td>
-        <td><button class="save link">${t("저장")}</button> <button class="del link danger">${t("삭제")}</button></td>
+        <td><button class="test link">${t("테스트")}</button>
+            <button class="save link">${t("저장")}</button>
+            <button class="del link danger">${t("삭제")}</button></td>
       </tr>`).join("") +
     (domains.length ? "" : `<tr><td colspan="6" class="empty">${t("도메인 없음")}</td></tr>`);
+}
+
+// testDomain asks the server to fetch the domain's own nostr.json from the
+// outside. DNS and the reverse proxy are what break a domain, and neither shows
+// up in the panel until somebody's client fails to find their address.
+async function testDomain(domain) {
+  const out = $("domain-test");
+  out.className = "small muted";
+  out.textContent = t("{0} 확인 중…", domain);
+
+  const r = await api("/api/admin/nip05/verify/" + encodeURIComponent(domain));
+  const lines = [`<code>${esc(r.url)}</code>`];
+  if (r.status) lines.push(t("응답 코드") + ": " + r.status);
+  if (r.expected) lines.push(t("이 서버의 답") + `: <code>${esc(r.expected)}</code>`);
+  if (r.got) lines.push(t("도메인의 답") + `: <code>${esc(r.got)}</code>`);
+  if (r.status && !r.cors) lines.push(t("CORS 헤더 없음"));
+  if (r.problem) lines.push(esc(r.problem));
+
+  out.className = "small " + (r.ok ? "ok" : "bad");
+  out.innerHTML = (r.ok ? "✓ " + t("정상") : "✗ " + t("실패")) + "<br>" + lines.join("<br>");
 }
 
 async function saveDomainRow(tr) {
@@ -758,6 +780,12 @@ $("add-domain").onclick = () => addDomain().catch((err) => alert(err.message));
 $("domains").addEventListener("click", (e) => {
   const tr = e.target.closest("tr[data-domain]");
   if (!tr) return;
+  if (e.target.classList.contains("test")) {
+    testDomain(tr.dataset.domain).catch((err) => {
+      $("domain-test").className = "small bad";
+      $("domain-test").textContent = err.message;
+    });
+  }
   if (e.target.classList.contains("save")) saveDomainRow(tr).catch((err) => alert(err.message));
   if (e.target.classList.contains("del") &&
       confirm(t("이 도메인을 지울까요? 이 도메인으로 판매된 주소가 모두 사라집니다."))) {

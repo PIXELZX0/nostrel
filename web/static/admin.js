@@ -74,6 +74,7 @@ const settingFields = [
   ["nip05_premium_tiers", "짧은 이름 할증 (길이:배수)", "text"],
   ["nip46_relays", "NIP-46 로그인 relay (쉼표 구분)", "text"],
   ["nsite_domains", "nsite 호스팅 도메인 (NIP-5A, 쉼표)", "text"],
+  ["accept_direct_messages", "외부에서 오는 DM 허용 (NIP-04 · NIP-17, 끄면 비공개 채팅 불가)", "checkbox"],
   ["accept_zap_receipts", "제3자 zap 영수증 허용 (NIP-57)", "checkbox"],
   ["accept_badge_awards", "제3자 배지 수여 허용 (NIP-58)", "checkbox"],
   ["auto_invite", "누구나 초대 코드 요청 가능 (NIP-43 kind 28935)", "checkbox"],

@@ -14,16 +14,21 @@ import (
 //   - a NIP-57 zap receipt (kind 9735) is written by the LNURL server that took
 //     the payment
 //   - a NIP-58 badge award (kind 8) is written by the badge issuer
+//   - a direct message addressed to them: a NIP-04 kind 4 from somebody who
+//     does not have an account, or a NIP-59 gift wrap (kind 1059), which is
+//     *always* signed by a throwaway key — even when the sender is a customer.
 //
-// Neither author has an account here, so on a paid whitelist relay every one of
-// them bounces and the customer never sees the zap or the badge. These are let
-// through only when they are well formed and name a customer, and they are
-// billed to that customer — the person whose storage they occupy.
+// None of those authors has an account here, so on a paid whitelist relay every
+// one of them bounces and the customer never sees the zap, the badge or the
+// message. These are let through only when they are well formed and name a
+// customer, and they are billed to that customer — the person whose storage
+// they occupy.
 //
 // The relay cannot verify that the payment or the award really happened; only
 // the LNURL server or the issuer knows. So an admin who turns these on accepts
 // that a stranger can spend a customer's quota, and bans abusers with NIP-86.
-// Both switches are off by default.
+// Zaps and badges are off by default; direct messages are on, because a relay
+// that drops them cannot carry NIP-17 private chat at all.
 
 // KindBadgeAward is NIP-58's award event; go-nostr has no constant for it.
 const KindBadgeAward = 8
@@ -62,6 +67,17 @@ func classify(evt *nostr.Event) (sponsored, bool) {
 			enabled:    func(s store.Settings) bool { return s.AcceptBadgeAwards },
 			valid:      validBadgeAward,
 			noun:       "badge award",
+		}, true
+	case nostr.KindEncryptedDirectMessage, nostr.KindGiftWrap:
+		return sponsored{
+			// The author comes first: a customer sending a message pays for it
+			// out of their own quota, the way any other event they write does.
+			// Only a message from outside falls through to the recipient — and
+			// a gift wrap always does, its author being a throwaway key.
+			candidates: append([]string{evt.PubKey}, recipients...),
+			enabled:    func(s store.Settings) bool { return s.AcceptDirectMessages },
+			valid:      validDirectMessage,
+			noun:       "direct message",
 		}, true
 	}
 	return sponsored{}, false
@@ -139,6 +155,14 @@ func validZapReceipt(evt *nostr.Event, recipients []string) bool {
 	}
 	ok, err := request.CheckSignature()
 	return ok && err == nil
+}
+
+// validDirectMessage requires the one recipient NIP-04 and NIP-59 both put in a
+// p tag, and something encrypted to hold. Several recipients would make billing
+// arbitrary, and neither NIP writes them.
+// The candidate list starts with the author here, so the tags are read again.
+func validDirectMessage(evt *nostr.Event, _ []string) bool {
+	return len(pTags(evt)) == 1 && evt.Content != ""
 }
 
 // validBadgeAward requires the award to point at a badge definition the author

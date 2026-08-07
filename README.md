@@ -21,7 +21,7 @@ A checked box means the relay implements it at the protocol level. *Conditional*
 - [x] **NIP-09** Event deletion — refunds the quota
 - [x] **NIP-11** Relay information document — generated live from settings
 - [x] **NIP-13** Proof of Work *(conditional: panel `min_pow > 0`)*
-- [x] **NIP-17** Private DMs
+- [x] **NIP-17** Private DMs *(conditional: incoming DMs accepted, on by default)*
 - [x] **NIP-40** Event expiration — GC reclaims the quota afterwards
 - [x] **NIP-42** AUTH
 - [x] **NIP-43** Relay access and invite codes *(conditional: `RELAY_SECRET_KEY`)*
@@ -32,7 +32,7 @@ A checked box means the relay implements it at the protocol level. *Conditional*
 - [x] **NIP-56** Reporting — feeds the NIP-86 moderation queue
 - [x] **NIP-57** Lightning zap receipts *(conditional: off by default)*
 - [x] **NIP-58** Badge awards *(conditional: off by default)*
-- [x] **NIP-59** Gift wrap — the relay enforces who may read them
+- [x] **NIP-59** Gift wrap — the relay enforces who may read them, and accepts them for a customer *(conditional: on by default)*
 - [x] **NIP-62** Right to vanish
 - [x] **NIP-70** Protected events
 - [x] **NIP-77** Negentropy sync
@@ -56,7 +56,7 @@ Blossom BUD-01/02/04/05/06/09 are implemented too — see [media hosting](#media
 | 09 | Event deletion | deleting refunds the quota |
 | 11 | Relay information document | fees, limits and policy generated live from settings |
 | 13 | Proof of Work | on when the panel's `min_pow` is set; committed difficulty is checked |
-| 17 | Private DMs | rides on NIP-59 gift wrap |
+| 17 | Private DMs | rides on NIP-59 gift wrap; a wrap addressed to a customer is accepted and billed to them |
 | 40 | Event expiration | dropped from queries the moment it expires; GC reclaims disk and quota after |
 | 42 | AUTH | DM reads, the panel's `read_auth_required`, NIP-43 requests |
 | 43 | Relay access, invite codes | when `RELAY_SECRET_KEY` is set (see below) |
@@ -67,7 +67,7 @@ Blossom BUD-01/02/04/05/06/09 are implemented too — see [media hosting](#media
 | 56 | Reporting | kind 1984 → NIP-86 moderation queue |
 | 57 | Lightning zaps | accepts kind 9735 receipts (off by default, see below) |
 | 58 | Badges | accepts kind 8 awards (off by default, see below) |
-| 59 | Gift wrap | kinds 1059 and 13 are readable only by sender and recipient; backdating allowed |
+| 59 | Gift wrap | kinds 1059 and 13 are readable only by sender and recipient; backdating allowed; the throwaway signing key needs no account |
 | 62 | Right to vanish | kind 62 → deletes that pubkey's events and files, and blocks re-upload |
 | 5A | Static sites (nsites) | hosts `<name>.<domain>` off a NIP-05 name sold here |
 | 70 | Protected events | the `-` tag |
@@ -76,34 +76,39 @@ Blossom BUD-01/02/04/05/06/09 are implemented too — see [media hosting](#media
 | 96 | HTTP file storage | `/.well-known/nostr/nip96.json` |
 | 98 | HTTP auth | panel, NIP-96, NIP-86 |
 
-NIP-11 `supported_nips` reports **the actual state**. The always-on set (01, 04, 09, 11, 17, 40, 42, 45, 50, 56, 59, 62, 70, 77, 86, 98) is fixed; the rest come and go with configuration:
+NIP-11 `supported_nips` reports **the actual state**. The always-on set (01, 04, 09, 11, 40, 42, 45, 50, 56, 62, 70, 77, 86, 98) is fixed; the rest come and go with configuration:
 
 | NIP | Condition |
 |---|---|
 | 13 | panel `min_pow > 0` |
 | 43 | `RELAY_SECRET_KEY` is set |
 | 05 | at least one domain on sale |
+| 17 / 59 | **Accept direct messages from outside** (on by default) |
 | 57 / 58 | each third-party event toggle |
 | 96 | file storage is available |
 
-04, 17 and 59 are on that list not because the events are merely stored, but because **the relay enforces who can read them**.
+04, 17 and 59 are on that list not because the events are merely stored, but because **the relay enforces who can read them** — and, for 17 and 59, who may write one to a customer.
 
-### Events third parties write about a customer (NIP-57, NIP-58)
+### Events third parties write to or about a customer (NIP-04, NIP-17, NIP-57, NIP-58)
 
-Two kinds are the exception. The author is not the customer, but the event is **about** a customer — left alone, every one of them would be rejected.
+These are the exception. The author is not the customer, but the event is **about** a customer, or addressed **to** one — left alone, every one of them would be rejected.
 
 | Event | Author | Setting |
 |---|---|---|
+| Gift wrap (kind 1059), kind 4 DM | a throwaway key (NIP-59), or a sender without an account | **Accept direct messages from outside** *(on)* |
 | Zap receipt (kind 9735) | the LNURL server that took the payment | **Allow third-party zap receipts** |
 | Badge award (kind 8) | the badge issuer | **Allow third-party badge awards** |
 
 Once on, an event only gets through when:
 
-- **Both**: the **first** pubkey among the `p` tags that has an account (or a group) here becomes the payer, and the event has to clear that person's write permission and quota. If none of the `p` tags is a customer, it is rejected.
+- **All**: the **first** pubkey among the candidates that has an account (or a group) here becomes the payer, and the event has to clear that person's write permission and quota. If none of them is a customer, it is rejected.
+- **Direct messages**: exactly one `p` tag and a non-empty `content`. The candidate list starts with the **author**, so a customer sending a message pays for it themselves; only a message from outside is billed to the recipient, and the switch only ever applies to that case.
 - **Zap receipts**: exactly one `p`. A `bolt11` tag is required. `description` must be a kind 9734 zap request with a **valid id and signature**, whose `p` matches the recipient.
 - **Badge awards**: the `a` tag must read `30009:<author pubkey>:<slug>` — the issuer has to point at **their own** badge definition, so nobody can award somebody else's badge. Multiple `p` tags are allowed (per NIP-58).
 
-The quota is billed **to the recipient**, not to whoever uploaded it. The relay cannot tell whether the payment or the award actually happened, so turning these on means a stranger can spend a customer's quota — which is why both default to off, and why abusive authors get banned through NIP-86. 57 and 58 appear in NIP-11 `supported_nips` only while the respective toggle is on.
+The quota is billed **to the recipient**, not to whoever uploaded it. The relay cannot tell whether the payment or the award actually happened, so turning these on means a stranger can spend a customer's quota — which is why zaps and badges default to off, and why abusive authors get banned through NIP-86. 57 and 58 appear in NIP-11 `supported_nips` only while the respective toggle is on.
+
+**Direct messages are the one that defaults to on.** A NIP-59 gift wrap is *always* signed by a key made for that single message, so with the switch off NIP-17 does not work at all — not even between two paying customers — and 17 and 59 drop out of `supported_nips` to say so. The cost of leaving it on is that anyone can spend a customer's storage by messaging them; ban them with NIP-86, or turn the switch off and keep kind 4 between customers only.
 
 The remaining badge kinds (30009 definitions, 10008 profile badges, 30008 badge sets) are ordinary self-authored events and work regardless of these settings.
 
@@ -194,6 +199,8 @@ Kinds 1059 and 13 are readable only by sender and recipient (NIP-42 auth require
 
 Gift wraps randomize `created_at` **up to two days into the past** to hide the real send time. So the `created_at` past limit is deliberately not applied to kind 1059 — applying it would silently break private DMs the moment that setting is turned on.
 
+The wrapping key is thrown away after one message, so it can never be a customer. A wrap naming a customer in its single `p` tag is therefore accepted on their behalf and billed to them — see [events third parties write](#events-third-parties-write-to-or-about-a-customer-nip-04-nip-17-nip-57-nip-58).
+
 **Not supported**: NIP-29 (relay-based groups). It needs a separate framework ([relay29](https://github.com/fiatjaf/relay29)) and the groups carry their own permission model, which collides with a paid whitelist. If you need it, run a dedicated instance for groups.
 
 ## Quick start
@@ -230,7 +237,7 @@ The environment holds only what has to be known before the database is open and 
 | `ADMIN_PASSWORD_HASH` | fallback password login — a **bcrypt** hash (`$2a$10$…`), never the password itself; print one with `nostrel hash-password '…'` |
 | `SESSION_SECRET` | signs password session cookies; without it sessions die on restart |
 
-Panel-owned, in `Admin`: relay name, description, icon, banner, operator contact and pubkey, theme, retention, countries, languages, topics, prices, NIP-05 premium tiers, NIP-46 relays, nsite domains, auto-invite, kind policy, third-party zap/badge acceptance, `read_auth_required`, `min_pow`, the `created_at` limits, the payment backend and its credentials, and the media backend including `max_blob_size_mb`.
+Panel-owned, in `Admin`: relay name, description, icon, banner, operator contact and pubkey, theme, retention, countries, languages, topics, prices, NIP-05 premium tiers, NIP-46 relays, nsite domains, auto-invite, kind policy, incoming DM acceptance, third-party zap/badge acceptance, `read_auth_required`, `min_pow`, the `created_at` limits, the payment backend and its credentials, and the media backend including `max_blob_size_mb`.
 
 > **Upgrading from a build that read these from the environment:** the moved settings are *not* migrated out of `.env` — they come up on their defaults and are then owned by the panel. If you were running with `READ_AUTH_REQUIRED=true`, `MIN_POW`, custom `created_at` limits, a relay name or a payment backend in the environment, set them again under `Admin` on the first start. A private relay that is not reconfigured comes back **readable by anyone**.
 

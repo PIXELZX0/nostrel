@@ -283,6 +283,7 @@ func TestGiftWrapIgnoresThePastLimit(t *testing.T) {
 
 	wrap := event(me, "sealed")
 	wrap.Kind = nostr.KindGiftWrap
+	wrap.Tags = nostr.Tags{{"p", me}}
 	wrap.CreatedAt = old
 	if reject, msg := r.rejectEvent(ctx, wrap); reject {
 		t.Errorf("backdated gift wrap rejected: %s", msg)

@@ -186,6 +186,8 @@ const dict = {
     "짧은 이름 할증 (길이:배수)": "Short-name premium (length:multiplier)",
     "NIP-46 로그인 relay (쉼표 구분)": "NIP-46 login relays (comma separated)",
     "nsite 호스팅 도메인 (NIP-5A, 쉼표)": "nsite hosting domains (NIP-5A, comma separated)",
+    "외부에서 오는 DM 허용 (NIP-04 · NIP-17, 끄면 비공개 채팅 불가)":
+      "Accept direct messages from outside (NIP-04 · NIP-17; off means no private chat)",
     "제3자 zap 영수증 허용 (NIP-57)": "Allow third-party zap receipts (NIP-57)",
     "제3자 배지 수여 허용 (NIP-58)": "Allow third-party badge awards (NIP-58)",
     "누구나 초대 코드 요청 가능 (NIP-43 kind 28935)":

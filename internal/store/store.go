@@ -157,6 +157,14 @@ type Settings struct {
 	AcceptZapReceipts bool `json:"accept_zap_receipts"`
 	AcceptBadgeAwards bool `json:"accept_badge_awards"`
 
+	// AcceptDirectMessages does the same for a message addressed to a customer
+	// by somebody without an account: a NIP-04 kind 4, or the NIP-59 gift wrap
+	// (kind 1059) NIP-17 private chat is built on. A wrap is always signed by a
+	// throwaway key, so turning this off stops NIP-17 dead — including between
+	// two customers. On by default; the quota it spends is the recipient's, so
+	// a spammer is banned through NIP-86 like any other.
+	AcceptDirectMessages bool `json:"accept_direct_messages"`
+
 	// ReadAuthRequired makes readers authenticate (NIP-42) and be whitelisted
 	// too, turning the relay private in both directions.
 	ReadAuthRequired bool `json:"read_auth_required"`
@@ -266,6 +274,8 @@ func DefaultSettings() Settings {
 		Nip46Relays:      "wss://relay.nsec.app,wss://nos.lol",
 		ThemeBgColor:     "#121417",
 		ThemeAccent:      "#f7931a",
+		// private chat works out of the box; see AcceptDirectMessages
+		AcceptDirectMessages: true,
 		// mock settles its own invoices: harmless for a relay nobody has
 		// configured yet, and main() warns loudly about it on every start.
 		// LocalPath is deliberately left empty: that means DefaultBlobPath, the

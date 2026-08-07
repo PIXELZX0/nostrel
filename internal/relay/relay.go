@@ -27,19 +27,19 @@ const Version = "0.1.0"
 // does not "support" those, it just carries them.
 //
 //	01 core             04 encrypted dm     09 deletion
-//	11 relay info       17 private dm       40 expiration
-//	42 auth             45 count            50 search
-//	56 reporting        59 gift wrap        62 request to vanish
-//	70 protected events 77 negentropy sync  86 relay management
-//	98 http auth
+//	11 relay info       40 expiration       42 auth
+//	45 count            50 search           56 reporting
+//	62 request to vanish                    70 protected events
+//	77 negentropy sync  86 relay management 98 http auth
 //
-// 04, 17 and 59 are here because the relay enforces who may read those kinds,
-// not merely because it stores them.
+// 04 is here because the relay enforces who may read that kind, not merely
+// because it stores it.
 //
 // The rest depend on configuration and are added in relayInformation, which
 // runs per request against the live settings: 13 proof of work, 05 identifiers,
-// 57 zap receipts, 58 badge awards, 96 http file storage.
-var supportedNIPs = []int{1, 4, 9, 11, 17, 40, 42, 45, 50, 56, 59, 62, 70, 77, 86, 98}
+// 17 private dm and 59 gift wrap, 57 zap receipts, 58 badge awards, 96 http
+// file storage.
+var supportedNIPs = []int{1, 4, 9, 11, 40, 42, 45, 50, 56, 62, 70, 77, 86, 98}
 
 type Relay struct {
 	*relaycore.Relay
@@ -194,6 +194,13 @@ func (r *Relay) relayInformation(ctx context.Context, req *http.Request, info ni
 	}
 	if settings.MinPoW > 0 {
 		info.AddSupportedNIP(13)
+	}
+	// A gift wrap is signed by a throwaway key, so a relay that turns third-party
+	// messages away cannot carry NIP-17 at all — saying otherwise would send
+	// clients here with chat that silently bounces.
+	if settings.AcceptDirectMessages {
+		info.AddSupportedNIP(17)
+		info.AddSupportedNIP(59)
 	}
 	if settings.AcceptZapReceipts {
 		info.AddSupportedNIP(57)

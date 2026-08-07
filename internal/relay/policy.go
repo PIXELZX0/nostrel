@@ -88,18 +88,20 @@ func (r *Relay) rejectEvent(ctx context.Context, evt *nostr.Event) (bool, string
 		return true, "invalid: created_at is too far in the past"
 	}
 
-	// Zap receipts and badge awards are written by a stranger about a customer,
-	// so they are checked and billed against that customer instead.
+	// Zap receipts, badge awards and direct messages are written about — or to —
+	// a customer by somebody who may not be one, so they are checked and billed
+	// against that customer instead. The switch only guards the sponsored case:
+	// a customer writing their own event is never third-party traffic.
 	payer := evt.PubKey
 	if kind, ok := classify(evt); ok {
-		if !kind.enabled(settings) {
-			return true, "blocked: this relay does not accept a " + kind.noun + " from a third party"
-		}
 		if !kind.valid(evt, kind.candidates) {
 			return true, "invalid: malformed " + kind.noun
 		}
 		if payer = r.payer(kind.candidates); payer == "" {
 			return true, "restricted: this " + kind.noun + " does not name anybody with an account here"
+		}
+		if payer != evt.PubKey && !kind.enabled(settings) {
+			return true, "blocked: this relay does not accept a " + kind.noun + " from a third party"
 		}
 	}
 

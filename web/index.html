@@ -30,6 +30,8 @@
       <select class="lang">
         <option value="ko">한국어</option>
         <option value="en">English</option>
+        <option value="ja">日本語</option>
+        <option value="zh">中文</option>
       </select></label>
   </header>
   <section class="card">
@@ -86,6 +88,8 @@
       <select class="lang">
         <option value="ko">한국어</option>
         <option value="en">English</option>
+        <option value="ja">日本語</option>
+        <option value="zh">中文</option>
       </select></label>
     <nav class="nav">
       <a href="/admin">관리자</a>
@@ -121,12 +125,24 @@
 
     <section class="card" id="sec-order">
       <h2>가입 · 갱신 · 용량 충전</h2>
-      <div class="row">
-        <label>구독 기간 <input id="periods" type="number" min="0" max="24" value="1"> 회</label>
-        <label>추가 용량 <input id="extra-mb" type="number" min="0" max="100000" value="0"> MB</label>
-        <button id="order">인보이스 발행</button>
+      <div id="plan-subscription">
+        <h3>구독제</h3>
+        <div class="row">
+          <label>구독 기간 <input id="periods" type="number" min="0" max="24" value="1"> 회</label>
+          <label>추가 용량 <input id="extra-mb" type="number" min="0" max="100000" value="0"> MB</label>
+          <button id="order">인보이스 발행</button>
+        </div>
+        <p id="quote" class="muted small"></p>
       </div>
-      <p id="quote" class="muted small"></p>
+      <div id="plan-lifetime" hidden>
+        <h3>영구 용량제</h3>
+        <div class="row">
+          <label>영구 용량 <input id="lifetime-mb" type="number" min="0" max="100000" value="1000"> MB</label>
+          <button id="order-lifetime">인보이스 발행</button>
+        </div>
+        <p id="quote-lifetime" class="muted small"></p>
+        <p class="muted small">한 번 결제하면 만료도 갱신도 없습니다. 구독 갱신은 더 이상 필요하지 않습니다.</p>
+      </div>
     </section>
 
     <section class="card" id="sec-nip05">
@@ -137,6 +153,7 @@
         <span class="muted">@</span>
         <select id="nip05-domain"></select>
         <label>기간 <input id="nip05-periods" type="number" min="1" max="24" value="1"> 회</label>
+        <label id="nip05-permanent-label" hidden><input id="nip05-permanent" type="checkbox"> 영구</label>
         <button id="check-name" class="secondary">확인</button>
         <button id="order-name" disabled>인보이스 발행</button>
       </div>
@@ -148,9 +165,15 @@
       <div id="group-status"></div>
       <div class="row">
         <input id="group-name" class="grow" placeholder="새 그룹 이름">
+      </div>
+      <div class="row" id="group-plan-subscription">
         <label>구독 기간 <input id="group-periods" type="number" min="0" max="24" value="1"> 회</label>
         <label>추가 용량 <input id="group-mb" type="number" min="0" max="100000" value="0"> MB</label>
         <button id="order-group">인보이스 발행</button>
+      </div>
+      <div class="row" id="group-plan-lifetime" hidden>
+        <label>영구 용량 <input id="group-lifetime-mb" type="number" min="0" max="100000" value="1000"> MB</label>
+        <button id="order-group-lifetime">인보이스 발행</button>
       </div>
       <p class="muted small">이미 그룹이 있으면 같은 버튼이 연장·충전이 됩니다. 멤버는 자기 계정을 먼저 쓰고,
         개인 용량이 없거나 다 쓴 뒤에만 그룹 용량을 씁니다.</p>

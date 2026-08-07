@@ -25,6 +25,7 @@ const (
 
 	KindAdmission    = "admission"
 	KindSubscription = "subscription"
+	KindLifetime     = "lifetime"
 	KindStorage      = "storage"
 	KindNip05        = "nip05"
 	KindGroup        = "group"
@@ -54,6 +55,10 @@ type Account struct {
 	UsedBytes  int64  `db:"used_bytes" json:"used_bytes"`
 	CreatedAt  int64  `db:"created_at" json:"created_at"`
 	Note       string `db:"note" json:"note"`
+	// Permanent is the lifetime plan: the quota was bought outright, so the
+	// account never expires and there is nothing to renew. It is kept separate
+	// from expires_at = 0 because that is also what a brand new row reads.
+	Permanent bool `db:"permanent" json:"permanent"`
 }
 
 type Payment struct {
@@ -77,10 +82,16 @@ type PaymentMeta struct {
 	PeriodDays int  `json:"period_days,omitempty"`
 	MB         int  `json:"mb,omitempty"`
 
-	// a NIP-05 identifier bought with this invoice
-	Nip05Domain string `json:"nip05_domain,omitempty"`
-	Nip05Name   string `json:"nip05_name,omitempty"`
-	Nip05Days   int    `json:"nip05_days,omitempty"`
+	// Permanent turns the account (or group) this invoice credits onto the
+	// lifetime plan: the megabytes above are kept forever and nothing expires.
+	Permanent bool `json:"permanent,omitempty"`
+
+	// a NIP-05 identifier bought with this invoice; Nip05Permanent means it was
+	// bought outright, in which case Nip05Days is zero
+	Nip05Domain    string `json:"nip05_domain,omitempty"`
+	Nip05Name      string `json:"nip05_name,omitempty"`
+	Nip05Days      int    `json:"nip05_days,omitempty"`
+	Nip05Permanent bool   `json:"nip05_permanent,omitempty"`
 
 	// a shared storage group topped up by this invoice; when set, PeriodDays
 	// and MB go to the group instead of the buyer's own account
@@ -128,11 +139,20 @@ type Settings struct {
 	AutoInvitePeriodDays int  `json:"auto_invite_period_days"`
 	AutoInviteQuotaMB    int  `json:"auto_invite_quota_mb"`
 
-	AdmissionSats    int64 `json:"admission_sats"`
-	SubscriptionSats int64 `json:"subscription_sats"`
-	PeriodDays       int   `json:"period_days"`
-	IncludedMB       int   `json:"included_mb"`
-	PricePerMBSats   int64 `json:"price_per_mb_sats"`
+	AdmissionSats int64 `json:"admission_sats"`
+
+	// Two plans, either of which the operator may switch off. Subscription
+	// rents access by the period and includes storage with it; lifetime sells
+	// storage outright, once, and the account never expires afterwards. The
+	// admission fee is charged either way, to a pubkey with no account yet.
+	SubscriptionEnabled bool  `json:"subscription_enabled"`
+	SubscriptionSats    int64 `json:"subscription_sats"`
+	PeriodDays          int   `json:"period_days"`
+	IncludedMB          int   `json:"included_mb"`
+	PricePerMBSats      int64 `json:"price_per_mb_sats"`
+
+	LifetimeEnabled        bool  `json:"lifetime_enabled"`
+	LifetimePricePerMBSats int64 `json:"lifetime_price_per_mb_sats"`
 
 	// Short NIP-05 names cost a multiple of the domain price. Written as
 	// "1:20,2:10,3:5" — see ParsePremiumTiers. Empty means no premium.
@@ -266,12 +286,17 @@ func DefaultSettings() Settings {
 	return Settings{
 		RelayName:        "nostrel",
 		RelayDescription: "a paid whitelist relay",
-		AdmissionSats:    1000,
-		SubscriptionSats: 2000,
-		PeriodDays:       30,
-		IncludedMB:       100,
-		PricePerMBSats:   10,
-		Nip46Relays:      "wss://relay.nsec.app,wss://nos.lol",
+		AdmissionSats: 1000,
+		// the subscription is the plan a fresh relay sells; lifetime is opt-in,
+		// priced so buying it outright costs about two years of the same storage
+		SubscriptionEnabled:    true,
+		SubscriptionSats:       2000,
+		PeriodDays:             30,
+		IncludedMB:             100,
+		PricePerMBSats:         10,
+		LifetimeEnabled:        false,
+		LifetimePricePerMBSats: 500,
+		Nip46Relays:            "wss://relay.nsec.app,wss://nos.lol",
 		ThemeBgColor:     "#121417",
 		ThemeAccent:      "#f7931a",
 		// private chat works out of the box; see AcceptDirectMessages
@@ -301,7 +326,8 @@ var ddls = []string{
 		quota_bytes INTEGER NOT NULL DEFAULT 0,
 		used_bytes  INTEGER NOT NULL DEFAULT 0,
 		created_at  INTEGER NOT NULL,
-		note        TEXT NOT NULL DEFAULT ''
+		note        TEXT NOT NULL DEFAULT '',
+		permanent   INTEGER NOT NULL DEFAULT 0
 	)`,
 	`CREATE TABLE IF NOT EXISTS payments (
 		id           TEXT PRIMARY KEY,
@@ -337,7 +363,8 @@ var ddls = []string{
 		quota_bytes INTEGER NOT NULL DEFAULT 0,
 		used_bytes  INTEGER NOT NULL DEFAULT 0,
 		created_at  INTEGER NOT NULL,
-		note        TEXT NOT NULL DEFAULT ''
+		note        TEXT NOT NULL DEFAULT '',
+		permanent   INTEGER NOT NULL DEFAULT 0
 	)`,
 	// one pubkey belongs to at most one group, so there is never a question
 	// about which pot a write is billed to
@@ -353,7 +380,9 @@ var ddls = []string{
 		price_sats  INTEGER NOT NULL DEFAULT 0,
 		period_days INTEGER NOT NULL DEFAULT 365,
 		note        TEXT NOT NULL DEFAULT '',
-		created_at  INTEGER NOT NULL
+		created_at  INTEGER NOT NULL,
+		-- 0 means this domain does not sell permanent names at all
+		permanent_price_sats INTEGER NOT NULL DEFAULT 0
 	)`,
 	`CREATE TABLE IF NOT EXISTS nip05_names (
 		domain         TEXT NOT NULL,
@@ -421,9 +450,16 @@ func Open(path string) (*Store, error) {
 		}
 	}
 	// columns added to tables that already existed before the feature landed
-	if err := s.addColumn("usage_events", "group_id", "TEXT NOT NULL DEFAULT ''"); err != nil {
-		events.Close()
-		return nil, fmt.Errorf("schema: %w", err)
+	for _, c := range [][3]string{
+		{"usage_events", "group_id", "TEXT NOT NULL DEFAULT ''"},
+		{"accounts", "permanent", "INTEGER NOT NULL DEFAULT 0"},
+		{"groups", "permanent", "INTEGER NOT NULL DEFAULT 0"},
+		{"nip05_domains", "permanent_price_sats", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := s.addColumn(c[0], c[1], c[2]); err != nil {
+			events.Close()
+			return nil, fmt.Errorf("schema: %w", err)
+		}
 	}
 	return s, nil
 }
@@ -531,7 +567,8 @@ func (s *Store) CountAccounts() (total int, active int, err error) {
 		return
 	}
 	err = s.DB.Get(&active,
-		`SELECT count(*) FROM accounts WHERE status = 'active' AND (expires_at = 0 OR expires_at > ?)`, now)
+		`SELECT count(*) FROM accounts
+		 WHERE status = 'active' AND (permanent = 1 OR expires_at = 0 OR expires_at > ?)`, now)
 	return
 }
 
@@ -544,6 +581,20 @@ func (s *Store) EnsureAccount(pubkey string) (*Account, error) {
 		return nil, err
 	}
 	return s.Account(pubkey)
+}
+
+// SetAccountPermanent switches the lifetime plan on or off for an account. It
+// is separate from UpdateAccount so that the paths which only renew or ban a
+// pubkey (invites, NIP-86) leave the plan alone.
+func (s *Store) SetAccountPermanent(pubkey string, permanent bool) error {
+	res, err := s.DB.Exec(`UPDATE accounts SET permanent = ? WHERE pubkey = ?`, permanent, pubkey)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNoAccount
+	}
+	return nil
 }
 
 // UpdateAccount applies an admin edit. expiresAt/quotaBytes are absolute values.
@@ -570,7 +621,7 @@ func (a *Account) CanWrite(now, size int64) (bool, string) {
 	if a.Status == StatusBanned {
 		return false, "blocked: this pubkey is banned"
 	}
-	if a.ExpiresAt != 0 && a.ExpiresAt < now {
+	if !a.Permanent && a.ExpiresAt != 0 && a.ExpiresAt < now {
 		return false, "restricted: subscription expired"
 	}
 	if a.UsedBytes+size > a.QuotaBytes {

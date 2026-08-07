@@ -53,13 +53,23 @@ async function loadInfo() {
   $("login-desc").textContent = info.description;
   $("relay-url").textContent = info.relay_url || location.origin.replace(/^http/, "ws");
 
-  const rows = [
-    [t("가입비 (최초 1회)"), fmtSats(info.admission_sats)],
-    [t("구독 ({0}일)", info.period_days), fmtSats(info.subscription_sats)],
-    [t("구독 포함 용량"), `${info.included_mb} MB`],
-    [t("추가 용량"), `${fmtSats(info.price_per_mb_sats)} / MB`],
-  ];
+  // one block of rows per plan on sale; an operator may run either or both
+  const rows = [[t("가입비 (최초 1회)"), fmtSats(info.admission_sats)]];
+  if (info.subscription_enabled) {
+    rows.push(
+      [t("구독 ({0}일)", info.period_days), fmtSats(info.subscription_sats)],
+      [t("구독 포함 용량"), `${info.included_mb} MB`],
+      [t("추가 용량"), `${fmtSats(info.price_per_mb_sats)} / MB`]);
+  }
+  if (info.lifetime_enabled) {
+    rows.push([t("영구 용량 (1회 결제)"), `${fmtSats(info.lifetime_price_per_mb_sats)} / MB`]);
+  }
   if (info.nip05_domains > 0) rows.push([t("NIP-05 도메인"), t("{0}개 판매 중", info.nip05_domains)]);
+
+  $("plan-subscription").hidden = !info.subscription_enabled;
+  $("plan-lifetime").hidden = !info.lifetime_enabled;
+  $("group-plan-subscription").hidden = !info.subscription_enabled;
+  $("group-plan-lifetime").hidden = !info.lifetime_enabled;
 
   // the relay is its own Blossom server, so clients only need this address
   if (info.media_enabled) {
@@ -88,10 +98,12 @@ async function showAccount() {
        <span class="muted small">${t("아직 등록되지 않음. 아래에서 가입하세요.")}</span></div>`;
   } else {
     const pct = acct.quota_bytes ? Math.min(100, (acct.used_bytes / acct.quota_bytes) * 100) : 100;
+    // a lifetime account has nothing to renew, so the subscription form goes away
+    if (acct.permanent) $("plan-subscription").hidden = true;
     $("account").innerHTML = `
       <div class="row">
         <span class="chip"><code>${pubkey.slice(0, 16)}…</code>
-          <span class="sub">${t("만료 {0}", fmtDate(acct.expires_at))}</span></span>
+          <span class="sub">${acct.permanent ? t("영구 (만료 없음)") : t("만료 {0}", fmtDate(acct.expires_at))}</span></span>
         <span class="${acct.can_write ? "ok" : "bad"} small">${acct.can_write ? t("쓰기 가능") : t("쓰기 불가")}</span>
       </div>
       <div class="bar"><span style="width:${pct}%"></span></div>
@@ -115,6 +127,17 @@ async function loadDomains() {
   if (!domains.length) {
     $("nip05-quote").textContent = t("판매 중인 도메인이 없습니다.");
   }
+  syncNip05Permanent();
+}
+
+// Only some domains sell names outright, so the toggle appears per domain —
+// and with it checked there is no term left to pick.
+function syncNip05Permanent() {
+  const selected = domains.find((d) => d.domain === $("nip05-domain").value);
+  const sold = Number(selected?.permanent_price_sats) > 0;
+  $("nip05-permanent-label").hidden = !sold;
+  if (!sold) $("nip05-permanent").checked = false;
+  $("nip05-periods").disabled = $("nip05-permanent").checked;
 }
 
 async function showMyNames() {
@@ -134,16 +157,18 @@ async function checkName() {
   const name = $("nip05-name").value.trim().toLowerCase();
   const domain = $("nip05-domain").value;
   const periods = Number($("nip05-periods").value) || 1;
+  const permanent = $("nip05-permanent").checked;
   if (!name || !domain) return;
 
   $("order-name").disabled = true;
   const res = await api(
     `/api/nip05/check?name=${encodeURIComponent(name)}&domain=${encodeURIComponent(domain)}` +
-    `&periods=${periods}&pubkey=${pubkey || ""}`);
+    `&periods=${periods}&permanent=${permanent ? 1 : 0}&pubkey=${pubkey || ""}`);
 
   if (res.available) {
     $("nip05-quote").innerHTML =
-      `<span class="ok">${t("{0}@{1} 구매 가능 — {2}", esc(name), esc(domain), fmtSats(res.sats))}</span>`;
+      `<span class="ok">${t(permanent ? "{0}@{1} 영구 구매 가능 — {2}" : "{0}@{1} 구매 가능 — {2}",
+         esc(name), esc(domain), fmtSats(res.sats))}</span>`;
     $("order-name").disabled = false;
   } else {
     $("nip05-quote").innerHTML = `<span class="bad">${esc(res.reason)}</span>`;
@@ -161,10 +186,11 @@ function showGroup() {
   }
 
   const pct = group.quota_bytes ? Math.min(100, (group.used_bytes / group.quota_bytes) * 100) : 100;
+  if (group.permanent) $("group-plan-subscription").hidden = true;
   $("group-status").innerHTML = `
     <div class="row">
       <span class="chip">${esc(group.name || group.id.slice(0, 12))}
-        <span class="sub">${t("만료 {0}", fmtDate(group.expires_at))}</span></span>
+        <span class="sub">${group.permanent ? t("영구 (만료 없음)") : t("만료 {0}", fmtDate(group.expires_at))}</span></span>
       ${group.owner === pubkey ? `<span class="ok small">${t("소유자")}</span>` : ""}
     </div>
     <div class="bar"><span style="width:${pct}%"></span></div>
@@ -225,6 +251,11 @@ function quote() {
   $("quote").textContent =
     t("구독 {0}회 + 추가 {1}MB ≈ {2} (신규 가입이면 가입비 {3} 추가)",
        periods, extra, fmtSats(total), fmtSats(info.admission_sats));
+
+  const lifetime = Number($("lifetime-mb").value) || 0;
+  $("quote-lifetime").textContent =
+    t("영구 {0}MB ≈ {1} (신규 가입이면 가입비 {2} 추가)",
+       lifetime, fmtSats(lifetime * info.lifetime_price_per_mb_sats), fmtSats(info.admission_sats));
 }
 
 // --- login ---
@@ -351,24 +382,26 @@ const order = () => placeOrder($("order"), {
   extra_mb: Number($("extra-mb").value) || 0,
 });
 
+const orderLifetime = () => placeOrder($("order-lifetime"), {
+  lifetime_mb: Number($("lifetime-mb").value) || 0,
+});
+
 const orderName = () => placeOrder($("order-name"), {
   nip05_domain: $("nip05-domain").value,
   nip05_name: $("nip05-name").value.trim().toLowerCase(),
   nip05_periods: Number($("nip05-periods").value) || 1,
+  nip05_permanent: $("nip05-permanent").checked,
 });
 
-function orderGroup() {
-  const fields = {
-    periods: Number($("group-periods").value) || 0,
-    extra_mb: Number($("group-mb").value) || 0,
-  };
+// the two plans go to the same group, so both buttons share this
+function orderGroup(button, fields) {
   // an existing group is topped up by id; a new one is created by name
   if (group) {
     fields.group_id = group.id;
   } else {
     fields.group_name = $("group-name").value.trim() || "group";
   }
-  return placeOrder($("order-group"), fields);
+  return placeOrder(button, fields);
 }
 
 function watch(hash) {
@@ -398,8 +431,10 @@ $("bunker-connect").onclick = connectBunker;
 $("nc-start").onclick = startNostrconnect;
 $("nc-copy").onclick = () => navigator.clipboard.writeText($("nc-uri").value);
 $("order").onclick = order;
+$("order-lifetime").onclick = orderLifetime;
 $("periods").oninput = quote;
 $("extra-mb").oninput = quote;
+$("lifetime-mb").oninput = quote;
 $("copy").onclick = () => navigator.clipboard.writeText($("bolt11").value);
 $("invoice-close").onclick = closeInvoice;
 // Esc closes the dialog on its own; stop polling with it
@@ -425,12 +460,19 @@ $("claim-invite").onclick = async () => {
 
 $("check-name").onclick = () => checkName().catch((err) => alert(err.message));
 $("order-name").onclick = orderName;
-$("order-group").onclick = orderGroup;
+$("order-group").onclick = () => orderGroup($("order-group"), {
+  periods: Number($("group-periods").value) || 0,
+  extra_mb: Number($("group-mb").value) || 0,
+});
+$("order-group-lifetime").onclick = () => orderGroup($("order-group-lifetime"), {
+  lifetime_mb: Number($("group-lifetime-mb").value) || 0,
+});
 // any edit invalidates the last availability answer
-for (const id of ["nip05-name", "nip05-domain", "nip05-periods"]) {
+for (const id of ["nip05-name", "nip05-domain", "nip05-periods", "nip05-permanent"]) {
   $(id).oninput = () => {
     $("order-name").disabled = true;
     $("nip05-quote").textContent = "";
+    syncNip05Permanent();
   };
 }
 $("group-members").addEventListener("click", (e) => {

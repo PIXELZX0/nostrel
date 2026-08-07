@@ -6,7 +6,7 @@ A Nostr relay that runs its write whitelist on lightning payments. Web panel inc
 
 - Relay engine: `internal/relaycore` (started from khatru, absorbed)
 - Payments: LNbits, NWC (NIP-47), and a mock for local testing
-- Billing: admission fee (once) + subscription (per period) + storage (MB) prepaid — events and uploaded files draw on the same quota
+- Billing: admission fee (once) plus one of two plans — a subscription (per period, storage included) or lifetime storage (MB bought outright, never expires). Events and uploaded files draw on the same quota
 - On sale: relay access, **NIP-05 identifiers** (priced per domain, per period), **groups** (several pubkeys sharing one quota)
 - Admin auth: NIP-98 signed login, with a password fallback
 - Media: Blossom (BUD-01/02) + NIP-96
@@ -385,6 +385,15 @@ curl -H 'Host: example.com' 'https://relay.example.com/.well-known/nostr.json?na
 
 **Adding a domain**: in the panel's `NIP-05 domains`, enter the domain, the price (sats) and the period (days). Point that domain's DNS at this server and make sure the reverse proxy passes the `Host` header through (caddy does by default; nginx needs `proxy_set_header Host $host;`).
 
+**When the Host header cannot be passed**, the same document is served with the domain in the path instead, so the proxy has nothing to preserve:
+
+```bash
+curl 'https://relay.example.com/nip05/example.com/nostr.json?name=bob'
+curl 'https://relay.example.com/nip05/example.com/.well-known/nostr.json?name=bob'   # same thing
+```
+
+Point the domain's `/.well-known/nostr.json` at one of these and clients see no difference — the answer, the CORS header and the expiry behaviour are identical. Clients always fetch `https://<domain>/.well-known/nostr.json`, so this is a rewrite for the proxy, never something to hand a user.
+
 **Name policy**:
 
 - The format follows NIP-05: `[a-z0-9_.-]`, up to 30 characters. Input is normalized to lowercase.
@@ -510,6 +519,7 @@ The same admin key gives you every method from a standard relay management clien
 | GET | `/api/invoice/{hash}/qr.png` | invoice QR |
 | GET | `/api/account/{pubkey}` | subscription state, quota, group membership |
 | GET | `/.well-known/nostr.json?name=` | NIP-05 lookup (CORS open) |
+| GET | `/nip05/{domain}/nostr.json?name=` | the same, with the domain in the path instead of the Host header |
 | GET | `/api/nip05/domains` | domains on sale and their prices |
 | GET | `/api/nip05/check?domain=&name=` | availability and price |
 | GET | `/api/nip05/names/{pubkey}` | identifiers held by that pubkey |

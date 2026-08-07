@@ -18,7 +18,9 @@ import (
 // NIP-05: identifiers of the form name@domain, sold per domain as a
 // subscription. The relay can serve several domains at once — which one a
 // request is for comes from the Host header, so pointing extra domains at this
-// server is a DNS change plus a row in the panel.
+// server is a DNS change plus a row in the panel. When a proxy in front cannot
+// pass Host through, /nip05/{domain}/nostr.json names the domain in the path
+// instead and answers exactly the same document.
 
 var (
 	nip05NameRE   = regexp.MustCompile(`^[a-z0-9_.-]{1,30}$`)
@@ -27,6 +29,14 @@ var (
 
 func (s *Server) registerNip05(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/nostr.json", s.handleWellKnownNostr)
+	// The same document with the domain in the path, for a reverse proxy that
+	// cannot pass the Host header through. It lives under /nip05/ rather than at
+	// the root: a bare "/{domain}/nostr.json" overlaps every prefix route the
+	// panel has (/static/ first among them) and ServeMux refuses to register it.
+	// Both spellings are here so the proxy can keep the rest of the path or
+	// rewrite to the short form, whichever its config makes easier.
+	mux.HandleFunc("GET /nip05/{domain}/.well-known/nostr.json", s.handleWellKnownNostr)
+	mux.HandleFunc("GET /nip05/{domain}/nostr.json", s.handleWellKnownNostr)
 	mux.HandleFunc("GET /api/nip05/domains", s.handleNip05Domains)
 	mux.HandleFunc("GET /api/nip05/check", s.handleNip05Check)
 	mux.HandleFunc("GET /api/nip05/names/{pubkey}", s.handleNip05NamesOf)
@@ -53,6 +63,16 @@ func requestDomain(r *http.Request) string {
 	return strings.ToLower(strings.TrimSuffix(host, "."))
 }
 
+// nip05Domain is the domain a nostr.json request is asking about: the path
+// segment when the request came in through the /{domain}/ fallback, and the
+// Host header otherwise.
+func nip05Domain(r *http.Request) string {
+	if d := r.PathValue("domain"); d != "" {
+		return strings.ToLower(strings.TrimSuffix(d, "."))
+	}
+	return requestDomain(r)
+}
+
 // handleWellKnownNostr is the NIP-05 endpoint itself. Clients fetch it from a
 // browser, so it must be readable cross-origin.
 //
@@ -66,7 +86,7 @@ func (s *Server) handleWellKnownNostr(w http.ResponseWriter, r *http.Request) {
 
 	name := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name")))
 	if name != "" && nip05NameRE.MatchString(name) {
-		pubkey, err := s.store.ResolveNip05(requestDomain(r), name)
+		pubkey, err := s.store.ResolveNip05(nip05Domain(r), name)
 		if err != nil {
 			s.log.Printf("nip-05 lookup for %s: %v", name, err)
 			writeErr(w, http.StatusInternalServerError, "could not look that name up")
@@ -99,10 +119,11 @@ func (s *Server) handleNip05Domains(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(domains))
 	for _, d := range domains {
 		out = append(out, map[string]any{
-			"domain":      d.Domain,
-			"price_sats":  d.PriceSats,
-			"period_days": d.PeriodDays,
-			"note":        d.Note,
+			"domain":               d.Domain,
+			"price_sats":           d.PriceSats,
+			"period_days":          d.PeriodDays,
+			"note":                 d.Note,
+			"permanent_price_sats": d.PermanentPriceSats,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -121,6 +142,7 @@ func (s *Server) handleNip05Check(w http.ResponseWriter, r *http.Request) {
 	if periods < 1 {
 		periods = 1
 	}
+	permanent := q.Get("permanent") == "1"
 
 	pubkey := strings.ToLower(strings.TrimSpace(q.Get("pubkey")))
 	if pubkey != "" && !validPubkey(pubkey) {
@@ -129,7 +151,8 @@ func (s *Server) handleNip05Check(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sats, _, _, err := s.billing.Quote(pubkey, billing.Order{
-		Nip05Domain: domain, Nip05Name: name, Nip05Periods: periods,
+		Nip05Domain: domain, Nip05Name: name,
+		Nip05Periods: periods, Nip05Permanent: permanent,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -195,16 +218,17 @@ func (s *Server) handleSaveNip05Domain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Enabled    bool   `json:"enabled"`
-		PriceSats  int64  `json:"price_sats"`
-		PeriodDays int    `json:"period_days"`
-		Note       string `json:"note"`
+		Enabled            bool   `json:"enabled"`
+		PriceSats          int64  `json:"price_sats"`
+		PeriodDays         int    `json:"period_days"`
+		Note               string `json:"note"`
+		PermanentPriceSats int64  `json:"permanent_price_sats"`
 	}
 	if _, err := decode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json body")
 		return
 	}
-	if req.PriceSats < 0 {
+	if req.PriceSats < 0 || req.PermanentPriceSats < 0 {
 		writeErr(w, http.StatusBadRequest, "price must not be negative")
 		return
 	}
@@ -216,6 +240,7 @@ func (s *Server) handleSaveNip05Domain(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.SaveNip05Domain(store.Nip05Domain{
 		Domain: domain, Enabled: req.Enabled, PriceSats: req.PriceSats,
 		PeriodDays: req.PeriodDays, Note: req.Note,
+		PermanentPriceSats: req.PermanentPriceSats,
 	}); err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not save the domain")
 		return

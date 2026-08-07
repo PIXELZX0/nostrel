@@ -218,3 +218,54 @@ func TestGroupOrderFundsTheGroupNotTheBuyer(t *testing.T) {
 		t.Errorf("unknown group: err = %v, want ErrNoSuchGroup", err)
 	}
 }
+
+func TestNip05PermanentPurchase(t *testing.T) {
+	ctx := context.Background()
+	s, st := newService(t)
+
+	// a domain that only sells terms refuses a permanent order
+	seedDomain(t, st, 500)
+	if _, _, _, err := s.Quote(testPubkey, Order{
+		Nip05Domain: "example.com", Nip05Name: "bob", Nip05Permanent: true,
+	}); !errors.Is(err, ErrNoPermanentDomain) {
+		t.Fatalf("permanent on a term-only domain: err = %v, want ErrNoPermanentDomain", err)
+	}
+
+	if err := st.SaveNip05Domain(store.Nip05Domain{
+		Domain: "example.com", Enabled: true, PriceSats: 500, PeriodDays: 365,
+		PermanentPriceSats: 20_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sats, meta, _, err := s.Quote(testPubkey, Order{
+		Nip05Domain: "example.com", Nip05Name: "bob", Nip05Permanent: true,
+	})
+	if err != nil {
+		t.Fatalf("quote: %v", err)
+	}
+	if sats != 20_000 || !meta.Nip05Permanent || meta.Nip05Days != 0 {
+		t.Errorf("quote = %d sats, meta %+v; want 20000 with a permanent, termless grant", sats, meta)
+	}
+
+	p, err := s.CreateOrder(ctx, testPubkey, Order{
+		Nip05Domain: "example.com", Nip05Name: "bob", Nip05Permanent: true,
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if _, err := s.Settle(ctx, p.PaymentHash); err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+
+	name, err := st.Nip05Name("example.com", "bob")
+	if err != nil {
+		t.Fatalf("reading the name: %v", err)
+	}
+	if !name.Permanent || name.ReservedUntil != 0 {
+		t.Errorf("name = %+v, want permanent with the reservation cleared", name)
+	}
+	if !name.Live(time.Now().AddDate(10, 0, 0).Unix()) {
+		t.Error("a permanent name stopped resolving")
+	}
+}

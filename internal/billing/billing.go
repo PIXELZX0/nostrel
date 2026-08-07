@@ -20,11 +20,17 @@ import (
 
 var (
 	ErrNothingOrdered = errors.New("order is empty")
-	ErrPeriodRequired = errors.New("a new account must buy at least one subscription period")
+	ErrPlanRequired   = errors.New("a new account must buy a subscription period or lifetime storage")
 	ErrTooLarge       = errors.New("order is too large")
 	ErrNoSuchGroup    = errors.New("no such group")
 	ErrNotGroupOwner  = errors.New("only the group owner can top it up")
 	ErrBadName        = errors.New("a NIP-05 name uses a-z, 0-9, '-', '_' and '.' only")
+
+	ErrNoSubscription    = errors.New("this relay does not sell subscriptions")
+	ErrNoLifetime        = errors.New("this relay does not sell lifetime storage")
+	ErrMixedPlans        = errors.New("subscription periods and lifetime storage cannot be bought in one order")
+	ErrAlreadyPermanent  = errors.New("this account is on the lifetime plan; there is nothing to renew")
+	ErrNoPermanentDomain = errors.New("this domain does not sell permanent names")
 )
 
 // maxOrder caps a single order so a typo (or a bot) can't ask for an invoice of
@@ -55,9 +61,16 @@ func (s *Service) Provider() string { return s.providers.Name() }
 
 // Order is what a user asked to buy. It is one of three things: relay access
 // for the buyer, a top-up for a shared storage group, or a NIP-05 name.
+//
+// Access comes in two shapes, and an order buys one or the other, never both:
+// Periods rents it by the period, LifetimeMB buys the storage outright and the
+// account stops expiring.
 type Order struct {
 	Periods int `json:"periods"`  // subscription periods
 	ExtraMB int `json:"extra_mb"` // storage on top of what the periods include
+
+	// LifetimeMB is storage bought once and kept forever.
+	LifetimeMB int `json:"lifetime_mb"`
 
 	// GroupID or GroupName make the periods and megabytes go to a shared group
 	// instead of the buyer's own account. GroupName creates a new group.
@@ -65,27 +78,45 @@ type Order struct {
 	GroupName string `json:"group_name"`
 
 	// A NIP-05 identifier, priced per domain and independent of the above.
-	Nip05Domain  string `json:"nip05_domain"`
-	Nip05Name    string `json:"nip05_name"`
-	Nip05Periods int    `json:"nip05_periods"`
+	// Nip05Permanent buys the name outright instead of for Nip05Periods terms.
+	Nip05Domain    string `json:"nip05_domain"`
+	Nip05Name      string `json:"nip05_name"`
+	Nip05Periods   int    `json:"nip05_periods"`
+	Nip05Permanent bool   `json:"nip05_permanent"`
 }
 
 func (o Order) forGroup() bool { return o.GroupID != "" || o.GroupName != "" }
 func (o Order) forNip05() bool { return o.Nip05Name != "" }
 
+// forAccess reports whether the order buys relay storage for somebody, as
+// opposed to being a bare NIP-05 purchase.
+func (o Order) forAccess() bool { return o.Periods > 0 || o.ExtraMB > 0 || o.LifetimeMB > 0 }
+
 // Quote prices an order for a pubkey, including the one-off admission fee when
 // the pubkey is buying relay access and has no account yet.
 func (s *Service) Quote(pubkey string, o Order) (sats int64, meta store.PaymentMeta, kind string, err error) {
-	if o.Periods < 0 || o.ExtraMB < 0 || o.Nip05Periods < 0 {
+	if o.Periods < 0 || o.ExtraMB < 0 || o.LifetimeMB < 0 || o.Nip05Periods < 0 {
 		return 0, meta, "", ErrNothingOrdered
 	}
-	if o.Periods > maxPeriods || o.ExtraMB > maxExtraMB || o.Nip05Periods > maxPeriods {
+	if o.Periods > maxPeriods || o.ExtraMB > maxExtraMB ||
+		o.LifetimeMB > maxExtraMB || o.Nip05Periods > maxPeriods {
 		return 0, meta, "", ErrTooLarge
+	}
+	// the two plans are alternatives, not a menu to combine: an order that
+	// mixed them would leave it ambiguous whether the pot still expires
+	if o.LifetimeMB > 0 && (o.Periods > 0 || o.ExtraMB > 0) {
+		return 0, meta, "", ErrMixedPlans
 	}
 
 	st, err := s.store.Settings()
 	if err != nil {
 		return 0, meta, "", err
+	}
+	if o.Periods > 0 && !st.SubscriptionEnabled {
+		return 0, meta, "", ErrNoSubscription
+	}
+	if o.LifetimeMB > 0 && (!st.LifetimeEnabled || st.LifetimePricePerMBSats <= 0) {
+		return 0, meta, "", ErrNoLifetime
 	}
 
 	if o.forNip05() {
@@ -97,6 +128,7 @@ func (s *Service) Quote(pubkey string, o Order) (sats int64, meta store.PaymentM
 		meta.Nip05Domain = strings.ToLower(o.Nip05Domain)
 		meta.Nip05Name = strings.ToLower(o.Nip05Name)
 		meta.Nip05Days = days
+		meta.Nip05Permanent = o.Nip05Permanent
 		kind = store.KindNip05
 	}
 
@@ -109,20 +141,25 @@ func (s *Service) Quote(pubkey string, o Order) (sats int64, meta store.PaymentM
 		if kind == "" {
 			kind = store.KindGroup
 		}
-	} else if o.Periods > 0 || o.ExtraMB > 0 {
+	} else if o.forAccess() {
 		// only relay access for the buyer themselves carries the admission fee
-		_, accErr := s.store.Account(pubkey)
+		acct, accErr := s.store.Account(pubkey)
 		isNew := errors.Is(accErr, store.ErrNoAccount)
 		if accErr != nil && !isNew {
 			return 0, meta, "", accErr
 		}
 		if isNew {
-			if o.Periods < 1 {
-				return 0, meta, "", ErrPeriodRequired
+			// storage alone buys nothing without a plan behind it
+			if o.Periods < 1 && o.LifetimeMB < 1 {
+				return 0, meta, "", ErrPlanRequired
 			}
 			sats += st.AdmissionSats
 			meta.Admission = true
 			kind = store.KindAdmission
+		} else if acct.Permanent && (o.Periods > 0 || o.ExtraMB > 0) {
+			// a lifetime account has no term to extend, and its storage is
+			// topped up at the lifetime price
+			return 0, meta, "", ErrAlreadyPermanent
 		}
 	}
 
@@ -141,6 +178,14 @@ func (s *Service) Quote(pubkey string, o Order) (sats int64, meta store.PaymentM
 			kind = store.KindStorage
 		}
 	}
+	if o.LifetimeMB > 0 {
+		sats += st.LifetimePricePerMBSats * int64(o.LifetimeMB)
+		meta.MB += o.LifetimeMB
+		meta.Permanent = true
+		if kind == "" {
+			kind = store.KindLifetime
+		}
+	}
 
 	if sats <= 0 {
 		return 0, meta, "", ErrNothingOrdered
@@ -155,7 +200,7 @@ func (s *Service) quoteNip05(st store.Settings, pubkey string, o Order) (sats in
 	if !nameRE.MatchString(name) {
 		return 0, 0, ErrBadName
 	}
-	if o.Nip05Periods < 1 {
+	if !o.Nip05Permanent && o.Nip05Periods < 1 {
 		return 0, 0, ErrNothingOrdered
 	}
 
@@ -166,6 +211,9 @@ func (s *Service) quoteNip05(st store.Settings, pubkey string, o Order) (sats in
 	if !domain.Enabled {
 		return 0, 0, store.ErrNoDomain
 	}
+	if o.Nip05Permanent && domain.PermanentPriceSats <= 0 {
+		return 0, 0, ErrNoPermanentDomain
+	}
 	if err := s.store.Nip05Available(domain.Domain, name, pubkey); err != nil {
 		return 0, 0, err
 	}
@@ -175,6 +223,10 @@ func (s *Service) quoteNip05(st store.Settings, pubkey string, o Order) (sats in
 		return 0, 0, err
 	}
 	multiplier := store.PremiumMultiplier(tiers, name)
+	if o.Nip05Permanent {
+		// bought outright: no term, so no days to grant
+		return domain.PermanentPriceSats * int64(multiplier), 0, nil
+	}
 	return domain.PriceSats * int64(o.Nip05Periods) * int64(multiplier),
 		domain.PeriodDays * o.Nip05Periods, nil
 }
@@ -183,7 +235,7 @@ func (s *Service) quoteNip05(st store.Settings, pubkey string, o Order) (sats in
 // asked for a new one. Only the owner may pay into an existing group, so
 // nobody can extend a stranger's subscription and claim it later.
 func (s *Service) quoteGroup(pubkey string, o Order) (string, error) {
-	if o.Periods < 1 && o.ExtraMB < 1 {
+	if !o.forAccess() {
 		return "", ErrNothingOrdered
 	}
 	if o.GroupID == "" {
@@ -199,6 +251,9 @@ func (s *Service) quoteGroup(pubkey string, o Order) (string, error) {
 	}
 	if group.Owner != pubkey {
 		return "", ErrNotGroupOwner
+	}
+	if group.Permanent && (o.Periods > 0 || o.ExtraMB > 0) {
+		return "", ErrAlreadyPermanent
 	}
 	return group.ID, nil
 }
@@ -342,10 +397,14 @@ func (s *Service) grant(p *store.Payment) error {
 	if meta.Nip05Name != "" {
 		// the name was reserved for this buyer at order time, so the update can
 		// only miss if an admin took the name away in the meantime
+		set := `expires_at = max(expires_at, ?) + ?, reserved_until = 0`
+		args := []any{now, int64(meta.Nip05Days) * 86400}
+		if meta.Nip05Permanent {
+			set, args = `permanent = 1, reserved_until = 0`, nil
+		}
+		args = append(args, meta.Nip05Domain, meta.Nip05Name, p.Pubkey)
 		res, err := tx.Exec(
-			`UPDATE nip05_names SET expires_at = max(expires_at, ?) + ?, reserved_until = 0
-			 WHERE domain = ? AND name = ? AND pubkey = ?`,
-			now, int64(meta.Nip05Days)*86400, meta.Nip05Domain, meta.Nip05Name, p.Pubkey)
+			`UPDATE nip05_names SET `+set+` WHERE domain = ? AND name = ? AND pubkey = ?`, args...)
 		if err != nil {
 			return err
 		}
@@ -362,7 +421,7 @@ func (s *Service) grant(p *store.Payment) error {
 	target, id := "accounts", p.Pubkey
 	if meta.GroupID != "" {
 		target, id = "groups", meta.GroupID
-	} else if meta.Admission || meta.PeriodDays > 0 || meta.MB > 0 {
+	} else if meta.Admission || meta.PeriodDays > 0 || meta.MB > 0 || meta.Permanent {
 		if _, err := tx.Exec(
 			`INSERT INTO accounts (pubkey, status, created_at) VALUES (?, 'active', ?)
 			 ON CONFLICT(pubkey) DO NOTHING`, p.Pubkey, now); err != nil {
@@ -375,9 +434,12 @@ func (s *Service) grant(p *store.Payment) error {
 	}
 
 	if meta.PeriodDays > 0 {
-		// extend from whichever is later: now, or an unexpired subscription
+		// extend from whichever is later: now, or an unexpired subscription.
+		// A pot already on the lifetime plan is left alone: it has no term, and
+		// writing one would take away what was bought outright.
 		if _, err := tx.Exec(
-			`UPDATE `+target+` SET expires_at = max(expires_at, ?) + ? WHERE `+key+` = ?`,
+			`UPDATE `+target+` SET expires_at = max(expires_at, ?) + ?
+			 WHERE `+key+` = ? AND permanent = 0`,
 			now, int64(meta.PeriodDays)*86400, id); err != nil {
 			return err
 		}
@@ -386,6 +448,15 @@ func (s *Service) grant(p *store.Payment) error {
 		if _, err := tx.Exec(
 			`UPDATE `+target+` SET quota_bytes = quota_bytes + ? WHERE `+key+` = ?`,
 			int64(meta.MB)*store.MB, id); err != nil {
+			return err
+		}
+	}
+	if meta.Permanent {
+		// the lifetime plan: the megabytes above are kept, and the term the pot
+		// may have had before is cleared rather than left to look expired
+		if _, err := tx.Exec(
+			`UPDATE `+target+` SET permanent = 1, expires_at = 0 WHERE `+key+` = ?`,
+			id); err != nil {
 			return err
 		}
 	}

@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// NIP-05 identifiers sold as a subscription: a name under one of the relay's
-// domains, valid until expires_at.
+// NIP-05 identifiers sold under one of the relay's domains, either for a term
+// (valid until expires_at) or outright (permanent, never expires).
 //
 // A name is taken while it resolves (expires_at in the future, or permanent),
 // and also while somebody is paying for it (reserved_until in the future). The
@@ -33,6 +33,10 @@ type Nip05Domain struct {
 	PeriodDays int    `db:"period_days" json:"period_days"`
 	Note       string `db:"note" json:"note"`
 	CreatedAt  int64  `db:"created_at" json:"created_at"`
+	// PermanentPriceSats is the one-off price of a name that never expires,
+	// the NIP-05 side of the lifetime plan. 0 means this domain sells terms
+	// only. The premium multiplier applies to it just the same.
+	PermanentPriceSats int64 `db:"permanent_price_sats" json:"permanent_price_sats"`
 }
 
 type Nip05Name struct {
@@ -82,12 +86,14 @@ func (s *Store) ListNip05Domains(enabledOnly bool) ([]Nip05Domain, error) {
 // SaveNip05Domain creates or updates a domain.
 func (s *Store) SaveNip05Domain(d Nip05Domain) error {
 	_, err := s.DB.Exec(
-		`INSERT INTO nip05_domains (domain, enabled, price_sats, period_days, note, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)
+		`INSERT INTO nip05_domains (domain, enabled, price_sats, period_days, note, created_at, permanent_price_sats)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(domain) DO UPDATE SET
 		   enabled = excluded.enabled, price_sats = excluded.price_sats,
-		   period_days = excluded.period_days, note = excluded.note`,
-		strings.ToLower(d.Domain), d.Enabled, d.PriceSats, d.PeriodDays, d.Note, time.Now().Unix())
+		   period_days = excluded.period_days, note = excluded.note,
+		   permanent_price_sats = excluded.permanent_price_sats`,
+		strings.ToLower(d.Domain), d.Enabled, d.PriceSats, d.PeriodDays, d.Note,
+		time.Now().Unix(), d.PermanentPriceSats)
 	return err
 }
 

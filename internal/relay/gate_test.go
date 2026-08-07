@@ -52,7 +52,7 @@ func TestGroupCoversAMemberWithoutAnAccount(t *testing.T) {
 		t.Errorf("empty group allowed a write (%s)", msg)
 	}
 
-	if err := st.UpdateGroup("g1", "team", me, store.StatusActive, 0, 10_000, ""); err != nil {
+	if err := st.UpdateGroup("g1", "team", me, store.StatusActive, 0, 10_000, "", false); err != nil {
 		t.Fatalf("funding group: %v", err)
 	}
 	if reject, msg := r.rejectEvent(ctx, event(other, "hello")); reject {
@@ -72,7 +72,7 @@ func TestPersonalQuotaIsChargedBeforeTheGroup(t *testing.T) {
 	if _, err := st.CreateGroup("g1", "team", me); err != nil {
 		t.Fatalf("creating group: %v", err)
 	}
-	if err := st.UpdateGroup("g1", "team", me, store.StatusActive, 0, 100_000, ""); err != nil {
+	if err := st.UpdateGroup("g1", "team", me, store.StatusActive, 0, 100_000, "", false); err != nil {
 		t.Fatalf("funding group: %v", err)
 	}
 	if err := st.AddMember("g1", other); err != nil {
@@ -134,7 +134,7 @@ func TestExpiredGroupStopsCoveringMembers(t *testing.T) {
 		t.Fatalf("creating group: %v", err)
 	}
 	expired := time.Now().Add(-time.Minute).Unix()
-	if err := st.UpdateGroup("g1", "team", me, store.StatusActive, expired, 10_000, ""); err != nil {
+	if err := st.UpdateGroup("g1", "team", me, store.StatusActive, expired, 10_000, "", false); err != nil {
 		t.Fatalf("expiring group: %v", err)
 	}
 	if err := st.AddMember("g1", other); err != nil {

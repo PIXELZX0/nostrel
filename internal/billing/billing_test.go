@@ -59,8 +59,8 @@ func TestQuotePricesAdmissionOnlyForNewAccounts(t *testing.T) {
 func TestQuoteRejectsBadOrders(t *testing.T) {
 	s, st := newService(t)
 
-	if _, _, _, err := s.Quote(testPubkey, Order{ExtraMB: 10}); err != ErrPeriodRequired {
-		t.Errorf("storage-only order for a new account: err = %v, want ErrPeriodRequired", err)
+	if _, _, _, err := s.Quote(testPubkey, Order{ExtraMB: 10}); err != ErrPlanRequired {
+		t.Errorf("storage-only order for a new account: err = %v, want ErrPlanRequired", err)
 	}
 	if _, err := st.EnsureAccount(testPubkey); err != nil {
 		t.Fatal(err)
@@ -201,5 +201,93 @@ func TestUsageAccounting(t *testing.T) {
 	acct, _ = st.Account(testPubkey)
 	if acct.UsedBytes != 200 {
 		t.Errorf("used after recompute = %d, want 200", acct.UsedBytes)
+	}
+}
+
+// enableLifetime puts the relay on the default price list with the lifetime
+// plan switched on, which is how an operator sells storage outright.
+func enableLifetime(t *testing.T, st *store.Store) store.Settings {
+	t.Helper()
+	settings := store.DefaultSettings()
+	settings.LifetimeEnabled = true
+	if err := st.SaveSettings(settings); err != nil {
+		t.Fatalf("saving settings: %v", err)
+	}
+	return settings
+}
+
+func TestLifetimeOrderNeverExpires(t *testing.T) {
+	ctx := context.Background()
+	s, st := newService(t)
+	settings := enableLifetime(t, st)
+
+	sats, meta, kind, err := s.Quote(testPubkey, Order{LifetimeMB: 1000})
+	if err != nil {
+		t.Fatalf("quote: %v", err)
+	}
+	want := settings.AdmissionSats + 1000*settings.LifetimePricePerMBSats
+	if sats != want {
+		t.Errorf("lifetime price = %d, want %d", sats, want)
+	}
+	// a new account still owes admission, so that is the kind it is booked under
+	if kind != store.KindAdmission || !meta.Permanent || meta.PeriodDays != 0 {
+		t.Errorf("meta = %+v (kind %q), want a permanent grant with no term", meta, kind)
+	}
+
+	p, err := s.CreateOrder(ctx, testPubkey, Order{LifetimeMB: 1000})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if _, err := s.Settle(ctx, p.PaymentHash); err != nil {
+		t.Fatalf("settle: %v", err)
+	}
+
+	acct, err := st.Account(testPubkey)
+	if err != nil {
+		t.Fatalf("account: %v", err)
+	}
+	if !acct.Permanent || acct.ExpiresAt != 0 {
+		t.Errorf("account = permanent %v, expires_at %d; want permanent with no expiry",
+			acct.Permanent, acct.ExpiresAt)
+	}
+	if acct.QuotaBytes != 1000*store.MB {
+		t.Errorf("quota = %d, want %d", acct.QuotaBytes, 1000*store.MB)
+	}
+	// ten years on it still writes: that is what "lifetime" has to mean
+	if ok, msg := acct.CanWrite(time.Now().AddDate(10, 0, 0).Unix(), 1); !ok {
+		t.Errorf("write in ten years refused: %s", msg)
+	}
+
+	// nothing left to renew, and a top-up must go through the lifetime price
+	if _, _, _, err := s.Quote(testPubkey, Order{Periods: 1}); err != ErrAlreadyPermanent {
+		t.Errorf("renewing a lifetime account: err = %v, want ErrAlreadyPermanent", err)
+	}
+	if _, _, _, err := s.Quote(testPubkey, Order{ExtraMB: 10}); err != ErrAlreadyPermanent {
+		t.Errorf("subscription-priced top-up: err = %v, want ErrAlreadyPermanent", err)
+	}
+	if _, _, _, err := s.Quote(testPubkey, Order{LifetimeMB: 10}); err != nil {
+		t.Errorf("lifetime top-up: err = %v, want it allowed", err)
+	}
+}
+
+func TestQuoteKeepsThePlansApart(t *testing.T) {
+	s, st := newService(t)
+
+	// lifetime is off by default: an order for it is refused rather than priced
+	if _, _, _, err := s.Quote(testPubkey, Order{LifetimeMB: 100}); err != ErrNoLifetime {
+		t.Errorf("lifetime while off: err = %v, want ErrNoLifetime", err)
+	}
+
+	settings := enableLifetime(t, st)
+	if _, _, _, err := s.Quote(testPubkey, Order{Periods: 1, LifetimeMB: 100}); err != ErrMixedPlans {
+		t.Errorf("both plans at once: err = %v, want ErrMixedPlans", err)
+	}
+
+	settings.SubscriptionEnabled = false
+	if err := st.SaveSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := s.Quote(testPubkey, Order{Periods: 1}); err != ErrNoSubscription {
+		t.Errorf("subscription while off: err = %v, want ErrNoSubscription", err)
 	}
 }

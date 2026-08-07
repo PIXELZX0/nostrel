@@ -13,7 +13,7 @@ func seedGroup(t *testing.T, s *Store, id, owner string, quota int64) *Group {
 	if err != nil {
 		t.Fatalf("creating group: %v", err)
 	}
-	if err := s.UpdateGroup(id, g.Name, owner, StatusActive, 0, quota, ""); err != nil {
+	if err := s.UpdateGroup(id, g.Name, owner, StatusActive, 0, quota, "", false); err != nil {
 		t.Fatalf("funding group: %v", err)
 	}
 	g, err = s.Group(id)
@@ -91,7 +91,7 @@ func TestAllowanceGate(t *testing.T) {
 	}
 
 	// an expired group stops covering its members
-	if err := s.UpdateGroup("g1", "", alice, StatusActive, now-1, 1000, ""); err != nil {
+	if err := s.UpdateGroup("g1", "", alice, StatusActive, now-1, 1000, "", false); err != nil {
 		t.Fatalf("expiring group: %v", err)
 	}
 	allowance, _ = s.Allowance(bob)

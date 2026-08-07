@@ -201,6 +201,7 @@ func (s *Server) handleSaveGroup(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt  int64  `json:"expires_at"`
 		QuotaBytes int64  `json:"quota_bytes"`
 		Note       string `json:"note"`
+		Permanent  bool   `json:"permanent"`
 	}
 	if _, err := decode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json body")
@@ -232,7 +233,7 @@ func (s *Server) handleSaveGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.store.UpdateGroup(id, req.Name, req.Owner, req.Status,
-		req.ExpiresAt, req.QuotaBytes, req.Note); err != nil {
+		req.ExpiresAt, req.QuotaBytes, req.Note, req.Permanent); err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not update the group")
 		return
 	}

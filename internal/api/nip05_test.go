@@ -40,6 +40,8 @@ func newNip05Server(t *testing.T) (http.Handler, *store.Store) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/nostr.json", s.handleWellKnownNostr)
+	mux.HandleFunc("GET /nip05/{domain}/.well-known/nostr.json", s.handleWellKnownNostr)
+	mux.HandleFunc("GET /nip05/{domain}/nostr.json", s.handleWellKnownNostr)
 	mux.HandleFunc("GET /api/nip05/domains", s.handleNip05Domains)
 	mux.HandleFunc("GET /api/nip05/check", s.handleNip05Check)
 	mux.HandleFunc("GET /api/nip05/names/{pubkey}", s.handleNip05NamesOf)
@@ -149,6 +151,61 @@ func TestWellKnownNostrJSON(t *testing.T) {
 		if len(body["names"].(map[string]any)) != 0 {
 			t.Errorf("name %q answered %v, want an empty map", bad, body["names"])
 		}
+	}
+}
+
+// The /nip05/{domain}/ fallback exists for a proxy that cannot pass the Host
+// header, so it must answer the same document while the Host says something
+// else entirely.
+func TestWellKnownByPathIgnoresHost(t *testing.T) {
+	h, st := newNip05Server(t)
+	seedDomain(t, st, "example.com", 100)
+	if err := st.SaveNip05Name(store.Nip05Name{
+		Domain: "example.com", Name: "bob", Pubkey: buyerPubkey,
+		ExpiresAt: time.Now().Add(time.Hour).Unix(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{
+		"/nip05/example.com/.well-known/nostr.json?name=bob",
+		"/nip05/example.com/nostr.json?name=bob",
+		// the domain in the path is normalised the same way a Host is
+		"/nip05/EXAMPLE.com./nostr.json?name=bob",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Host = "relay.internal:8080" // what a proxy left behind
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: status = %d, want 200", path, rec.Code)
+			continue
+		}
+		if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+			t.Errorf("%s: CORS header = %q, want *", path, got)
+		}
+		var body map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%s: decoding %s: %v", path, rec.Body.String(), err)
+		}
+		names, _ := body["names"].(map[string]any)
+		if names["bob"] != buyerPubkey {
+			t.Errorf("%s: names = %v, want bob -> %s", path, names, buyerPubkey)
+		}
+	}
+
+	// the path names the domain, so a domain the relay does not serve stays empty
+	req := httptest.NewRequest(http.MethodGet, "/nip05/elsewhere.example/nostr.json?name=bob", nil)
+	req.Host = "example.com"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body["names"].(map[string]any)) != 0 {
+		t.Errorf("foreign domain in the path answered %v, want an empty map", body["names"])
 	}
 }
 

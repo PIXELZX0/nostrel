@@ -27,6 +27,9 @@ type Group struct {
 	UsedBytes  int64  `db:"used_bytes" json:"used_bytes"`
 	CreatedAt  int64  `db:"created_at" json:"created_at"`
 	Note       string `db:"note" json:"note"`
+	// Permanent is the lifetime plan, exactly as on an Account: the pot was
+	// bought outright and never expires.
+	Permanent bool `db:"permanent" json:"permanent"`
 }
 
 type Member struct {
@@ -40,7 +43,7 @@ func (g *Group) CanSpend(now, size int64) (bool, string) {
 	if g.Status == StatusBanned {
 		return false, "blocked: this group is banned"
 	}
-	if g.ExpiresAt != 0 && g.ExpiresAt < now {
+	if !g.Permanent && g.ExpiresAt != 0 && g.ExpiresAt < now {
 		return false, "restricted: the group subscription expired"
 	}
 	if g.UsedBytes+size > g.QuotaBytes {
@@ -106,10 +109,10 @@ func (s *Store) ListGroups(query string, limit, offset int) ([]Group, error) {
 }
 
 // UpdateGroup applies an admin edit. expiresAt/quotaBytes are absolute values.
-func (s *Store) UpdateGroup(id, name, owner, status string, expiresAt, quotaBytes int64, note string) error {
+func (s *Store) UpdateGroup(id, name, owner, status string, expiresAt, quotaBytes int64, note string, permanent bool) error {
 	res, err := s.DB.Exec(
-		`UPDATE groups SET name = ?, owner = ?, status = ?, expires_at = ?, quota_bytes = ?, note = ?
-		 WHERE id = ?`, name, owner, status, expiresAt, quotaBytes, note, id)
+		`UPDATE groups SET name = ?, owner = ?, status = ?, expires_at = ?, quota_bytes = ?, note = ?, permanent = ?
+		 WHERE id = ?`, name, owner, status, expiresAt, quotaBytes, note, permanent, id)
 	if err != nil {
 		return err
 	}

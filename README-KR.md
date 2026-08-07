@@ -6,7 +6,7 @@
 
 - 릴레이 엔진: `internal/relaycore` (khatru 기반, 흡수)
 - 결제: LNbits, NWC(NIP-47), 로컬 테스트용 mock
-- 과금: 가입비(1회) + 구독(기간제) + 용량(MB) 선불 — 이벤트와 업로드 파일이 같은 용량을 소비
+- 과금: 가입비(1회) + 두 요금제 중 하나 — 구독제(기간제, 용량 포함) 또는 영구 용량제(MB를 한 번에 사서 만료 없음). 이벤트와 업로드 파일이 같은 용량을 소비
 - 판매 상품: 릴레이 접근, **NIP-05 주소**(도메인별 가격, 기간제), **그룹**(여러 pubkey가 용량 공유)
 - 관리자 인증: NIP-98 서명 로그인 + 비밀번호 백업
 - 미디어: Blossom(BUD-01/02) + NIP-96
@@ -392,6 +392,15 @@ curl -H 'Host: example.com' 'https://relay.example.com/.well-known/nostr.json?na
 
 **도메인 추가**: 패널 `NIP-05 도메인`에서 도메인·가격(sats)·기간(일)을 넣는다. 그 도메인의 DNS를 이 서버로 향하게 하고, 리버스 프록시가 `Host` 헤더를 그대로 넘겨야 한다(caddy는 기본값, nginx는 `proxy_set_header Host $host;`).
 
+**Host 헤더를 넘길 수 없을 때**는 도메인을 경로에 담은 주소가 같은 문서를 응답한다. 프록시가 보존할 것이 없어진다.
+
+```bash
+curl 'https://relay.example.com/nip05/example.com/nostr.json?name=bob'
+curl 'https://relay.example.com/nip05/example.com/.well-known/nostr.json?name=bob'   # 같은 응답
+```
+
+그 도메인의 `/.well-known/nostr.json`을 둘 중 하나로 넘기면 클라이언트 쪽 차이는 없다 — 응답도, CORS 헤더도, 만료 동작도 같다. 클라이언트는 언제나 `https://<도메인>/.well-known/nostr.json`을 조회하므로, 이 주소는 프록시가 쓰는 것이지 사용자에게 알려줄 주소가 아니다.
+
 **이름 정책**:
 
 - 형식은 NIP-05 규격대로 `[a-z0-9_.-]`, 최대 30자. 입력은 소문자로 정규화된다.
@@ -517,6 +526,7 @@ curl -X PUT https://relay.example.com/upload -H "Authorization: Nostr $AUTH" --d
 | GET | `/api/invoice/{hash}/qr.png` | 인보이스 QR |
 | GET | `/api/account/{pubkey}` | 구독 상태 · 용량 · 소속 그룹 |
 | GET | `/.well-known/nostr.json?name=` | NIP-05 조회 (CORS 허용) |
+| GET | `/nip05/{domain}/nostr.json?name=` | 위와 같은 응답, Host 헤더 대신 경로로 도메인 지정 |
 | GET | `/api/nip05/domains` | 판매 중인 도메인·가격 |
 | GET | `/api/nip05/check?domain=&name=` | 구매 가능 여부 + 가격 |
 | GET | `/api/nip05/names/{pubkey}` | 그 pubkey가 가진 주소 |

@@ -41,11 +41,16 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"relay_url":          s.cfg.ServiceURL,
 		"payment_provider":   s.billing.Provider(),
 		"admission_sats":     st.AdmissionSats,
-		"subscription_sats":  st.SubscriptionSats,
-		"period_days":        st.PeriodDays,
-		"included_mb":        st.IncludedMB,
-		"price_per_mb_sats":  st.PricePerMBSats,
 		"read_auth_required": st.ReadAuthRequired,
+
+		// the two plans, either of which may be switched off
+		"subscription_enabled":       st.SubscriptionEnabled,
+		"subscription_sats":          st.SubscriptionSats,
+		"period_days":                st.PeriodDays,
+		"included_mb":                st.IncludedMB,
+		"price_per_mb_sats":          st.PricePerMBSats,
+		"lifetime_enabled":           st.LifetimeEnabled && st.LifetimePricePerMBSats > 0,
+		"lifetime_price_per_mb_sats": st.LifetimePricePerMBSats,
 		// media is off when BLOB_PATH could not be prepared; when it is on, the
 		// relay is its own Blossom (and NIP-96) server at the panel's address
 		"media_enabled": s.blobs != nil,
@@ -58,14 +63,18 @@ type orderRequest struct {
 	Periods int    `json:"periods"`
 	ExtraMB int    `json:"extra_mb"`
 
+	// storage bought outright instead of rented by the period
+	LifetimeMB int `json:"lifetime_mb"`
+
 	// a shared storage group to create or top up instead of a personal account
 	GroupID   string `json:"group_id"`
 	GroupName string `json:"group_name"`
 
 	// a NIP-05 identifier
-	Nip05Domain  string `json:"nip05_domain"`
-	Nip05Name    string `json:"nip05_name"`
-	Nip05Periods int    `json:"nip05_periods"`
+	Nip05Domain    string `json:"nip05_domain"`
+	Nip05Name      string `json:"nip05_name"`
+	Nip05Periods   int    `json:"nip05_periods"`
+	Nip05Permanent bool   `json:"nip05_permanent"`
 }
 
 func (s *Server) handleOrder(w http.ResponseWriter, r *http.Request) {
@@ -81,16 +90,17 @@ func (s *Server) handleOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	order := billing.Order{
-		Periods: req.Periods, ExtraMB: req.ExtraMB,
+		Periods: req.Periods, ExtraMB: req.ExtraMB, LifetimeMB: req.LifetimeMB,
 		GroupID: req.GroupID, GroupName: req.GroupName,
-		Nip05Domain: req.Nip05Domain, Nip05Name: req.Nip05Name, Nip05Periods: req.Nip05Periods,
+		Nip05Domain: req.Nip05Domain, Nip05Name: req.Nip05Name,
+		Nip05Periods: req.Nip05Periods, Nip05Permanent: req.Nip05Permanent,
 	}
 	p, err := s.billing.CreateOrder(r.Context(), req.Pubkey, order)
 	switch {
-	case errors.Is(err, billing.ErrPeriodRequired):
-		writeErr(w, http.StatusBadRequest, "a new account needs at least one subscription period")
-		return
 	case errors.Is(err, billing.ErrNothingOrdered), errors.Is(err, billing.ErrTooLarge),
+		errors.Is(err, billing.ErrPlanRequired), errors.Is(err, billing.ErrMixedPlans),
+		errors.Is(err, billing.ErrNoSubscription), errors.Is(err, billing.ErrNoLifetime),
+		errors.Is(err, billing.ErrAlreadyPermanent), errors.Is(err, billing.ErrNoPermanentDomain),
 		errors.Is(err, billing.ErrBadName), errors.Is(err, billing.ErrNoSuchGroup),
 		errors.Is(err, billing.ErrNotGroupOwner):
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -198,6 +208,7 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 		out["expires_at"] = acct.ExpiresAt
 		out["quota_bytes"] = acct.QuotaBytes
 		out["used_bytes"] = acct.UsedBytes
+		out["permanent"] = acct.Permanent
 	}
 	// the shared pot the pubkey can fall back on, if any
 	if group := allowance.Group; group != nil {
@@ -208,6 +219,7 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 			"expires_at":  group.ExpiresAt,
 			"quota_bytes": group.QuotaBytes,
 			"used_bytes":  group.UsedBytes,
+			"permanent":   group.Permanent,
 		}
 	}
 	// a zero-byte write is the cheapest question there is: may this pubkey

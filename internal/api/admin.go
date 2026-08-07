@@ -91,6 +91,7 @@ func (s *Server) handleSaveAccount(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt  int64  `json:"expires_at"`
 		QuotaBytes int64  `json:"quota_bytes"`
 		Note       string `json:"note"`
+		Permanent  bool   `json:"permanent"`
 	}
 	if _, err := decode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json body")
@@ -111,6 +112,10 @@ func (s *Server) handleSaveAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.store.UpdateAccount(pubkey, req.Status, req.ExpiresAt, req.QuotaBytes, req.Note); err != nil {
 		writeErr(w, http.StatusInternalServerError, "could not update account")
+		return
+	}
+	if err := s.store.SetAccountPermanent(pubkey, req.Permanent); err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not update the account plan")
 		return
 	}
 
@@ -290,12 +295,15 @@ func imageURL(v string) bool {
 
 func validateSettings(st store.Settings) error {
 	switch {
-	case st.AdmissionSats < 0, st.SubscriptionSats < 0, st.PricePerMBSats < 0:
+	case st.AdmissionSats < 0, st.SubscriptionSats < 0, st.PricePerMBSats < 0,
+		st.LifetimePricePerMBSats < 0:
 		return errors.New("prices must not be negative")
 	case st.PeriodDays <= 0:
 		return errors.New("period_days must be at least 1")
 	case st.IncludedMB < 0:
 		return errors.New("included_mb must not be negative")
+	case !st.SubscriptionEnabled && !(st.LifetimeEnabled && st.LifetimePricePerMBSats > 0):
+		return errors.New("at least one plan must be on sale: a subscription, or lifetime storage with a price")
 	case st.MinPoW < 0:
 		return errors.New("min_pow must not be negative")
 	case st.CreatedAtMaxPast < 0, st.CreatedAtMaxFuture < 0:

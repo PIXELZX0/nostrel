@@ -67,10 +67,13 @@ const settingFields = [
   ["relay_languages", "언어 (ISO 639-1, 쉼표)", "text"],
   ["relay_topics", "주제 태그 (쉼표)", "text"],
   ["admission_sats", "가입비 (sats)", "number"],
+  ["subscription_enabled", "구독제 판매", "checkbox"],
   ["subscription_sats", "구독료 (sats)", "number"],
   ["period_days", "구독 기간 (일)", "number"],
   ["included_mb", "구독 포함 용량 (MB)", "number"],
   ["price_per_mb_sats", "추가 용량 단가 (sats/MB)", "number"],
+  ["lifetime_enabled", "영구 용량제 판매 (1회 결제, 만료 없음)", "checkbox"],
+  ["lifetime_price_per_mb_sats", "영구 용량 단가 (sats/MB)", "number"],
   ["nip05_premium_tiers", "짧은 이름 할증 (길이:배수)", "text"],
   ["nip46_relays", "NIP-46 로그인 relay (쉼표 구분)", "text"],
   ["nsite_domains", "nsite 호스팅 도메인 (NIP-5A, 쉼표)", "text"],
@@ -180,8 +183,8 @@ async function loadAccounts() {
   const q = encodeURIComponent($("search").value || "");
   const accounts = await api("/api/admin/accounts?q=" + q);
   $("accounts").innerHTML =
-    cols("", 110, 190, 160, "", 110) +
-    `<tr><th>pubkey</th><th>${t("상태")}</th><th>${t("만료")}</th><th>${t("사용/할당(MB)")}</th><th>${t("메모")}</th><th></th></tr>` +
+    cols("", 110, 190, 60, 160, "", 110) +
+    `<tr><th>pubkey</th><th>${t("상태")}</th><th>${t("만료")}</th><th>${t("영구")}</th><th>${t("사용/할당(MB)")}</th><th>${t("메모")}</th><th></th></tr>` +
     accounts.map((a) => `
       <tr data-pubkey="${a.pubkey}">
         <td><code title="${a.pubkey}">${a.pubkey.slice(0, 12)}…</code></td>
@@ -191,12 +194,13 @@ async function loadAccounts() {
             <option value="banned"${a.status === "banned" ? " selected" : ""}>banned</option>
           </select>
         </td>
-        <td><input class="f-expires" type="datetime-local" value="${toLocalInput(a.expires_at)}"></td>
+        <td><input class="f-expires" type="datetime-local" value="${toLocalInput(a.expires_at)}"${a.permanent ? " disabled" : ""}></td>
+        <td><input class="f-permanent" type="checkbox"${a.permanent ? " checked" : ""}></td>
         <td class="num">${fmtMB(a.used_bytes)} / <input class="f-quota" type="number" value="${fmtMB(a.quota_bytes)}"></td>
         <td><input class="f-note" value="${esc(a.note)}"></td>
         <td><button class="save link">${t("저장")}</button> <button class="del link danger">${t("삭제")}</button></td>
       </tr>`).join("") +
-    (accounts.length ? "" : `<tr><td colspan="6" class="empty">${t("계정 없음")}</td></tr>`);
+    (accounts.length ? "" : `<tr><td colspan="7" class="empty">${t("계정 없음")}</td></tr>`);
 }
 
 function toLocalInput(unix) {
@@ -212,6 +216,7 @@ async function saveRow(tr) {
     expires_at: expires ? Math.floor(new Date(expires).getTime() / 1000) : 0,
     quota_bytes: Math.round(Number(tr.querySelector(".f-quota").value) * MB),
     note: tr.querySelector(".f-note").value,
+    permanent: tr.querySelector(".f-permanent").checked,
   });
   loadAccounts();
 }
@@ -325,8 +330,8 @@ async function loadGroups() {
   const q = encodeURIComponent($("group-search").value || "");
   const groups = await api("/api/admin/groups?q=" + q);
   $("groups").innerHTML =
-    cols("", 130, 70, 110, 190, 160, "", 110) +
-    `<tr><th>${t("이름")}</th><th>${t("소유자")}</th><th>${t("멤버")}</th><th>${t("상태")}</th><th>${t("만료")}</th><th>${t("사용/할당(MB)")}</th><th>${t("메모")}</th><th></th></tr>` +
+    cols("", 130, 70, 110, 190, 60, 160, "", 110) +
+    `<tr><th>${t("이름")}</th><th>${t("소유자")}</th><th>${t("멤버")}</th><th>${t("상태")}</th><th>${t("만료")}</th><th>${t("영구")}</th><th>${t("사용/할당(MB)")}</th><th>${t("메모")}</th><th></th></tr>` +
     groups.map((g) => `
       <tr data-group="${esc(g.id)}" data-owner="${esc(g.owner)}">
         <td><input class="f-name" value="${esc(g.name)}"></td>
@@ -338,12 +343,13 @@ async function loadGroups() {
             <option value="banned"${g.status === "banned" ? " selected" : ""}>banned</option>
           </select>
         </td>
-        <td><input class="f-expires" type="datetime-local" value="${toLocalInput(g.expires_at)}"></td>
+        <td><input class="f-expires" type="datetime-local" value="${toLocalInput(g.expires_at)}"${g.permanent ? " disabled" : ""}></td>
+        <td><input class="f-permanent" type="checkbox"${g.permanent ? " checked" : ""}></td>
         <td class="num">${fmtMB(g.used_bytes)} / <input class="f-quota" type="number" value="${fmtMB(g.quota_bytes)}"></td>
         <td><input class="f-note" value="${esc(g.note)}"></td>
         <td><button class="save link">${t("저장")}</button> <button class="del link danger">${t("삭제")}</button></td>
       </tr>`).join("") +
-    (groups.length ? "" : `<tr><td colspan="8" class="empty">${t("그룹 없음")}</td></tr>`);
+    (groups.length ? "" : `<tr><td colspan="9" class="empty">${t("그룹 없음")}</td></tr>`);
 
   if (openGroup && groups.some((g) => g.id === openGroup)) {
     await loadMembers(openGroup);
@@ -392,6 +398,7 @@ async function saveGroupRow(tr) {
     expires_at: expires ? Math.floor(new Date(expires).getTime() / 1000) : 0,
     quota_bytes: Math.round(Number(tr.querySelector(".f-quota").value) * MB),
     note: tr.querySelector(".f-note").value,
+    permanent: tr.querySelector(".f-permanent").checked,
   });
   loadGroups();
 }
@@ -423,20 +430,21 @@ async function addGroup() {
 async function loadDomains() {
   const domains = await api("/api/admin/nip05/domains");
   $("domains").innerHTML =
-    cols("", 80, 120, 100, "", 110) +
-    `<tr><th>${t("도메인")}</th><th>${t("판매중")}</th><th>${t("가격 (sats)")}</th><th>${t("기간 (일)")}</th><th>${t("메모")}</th><th></th></tr>` +
+    cols("", 80, 120, 100, 130, "", 110) +
+    `<tr><th>${t("도메인")}</th><th>${t("판매중")}</th><th>${t("가격 (sats)")}</th><th>${t("기간 (일)")}</th><th>${t("영구 가격 (sats, 0 = 안 팜)")}</th><th>${t("메모")}</th><th></th></tr>` +
     domains.map((d) => `
       <tr data-domain="${esc(d.domain)}">
         <td><code>${esc(d.domain)}</code></td>
         <td><input class="f-enabled" type="checkbox"${d.enabled ? " checked" : ""}></td>
         <td><input class="f-price" type="number" value="${d.price_sats}"></td>
         <td><input class="f-days" type="number" value="${d.period_days}"></td>
+        <td><input class="f-permanent-price" type="number" value="${d.permanent_price_sats}"></td>
         <td><input class="f-note" value="${esc(d.note)}"></td>
         <td><button class="test link">${t("테스트")}</button>
             <button class="save link">${t("저장")}</button>
             <button class="del link danger">${t("삭제")}</button></td>
       </tr>`).join("") +
-    (domains.length ? "" : `<tr><td colspan="6" class="empty">${t("도메인 없음")}</td></tr>`);
+    (domains.length ? "" : `<tr><td colspan="7" class="empty">${t("도메인 없음")}</td></tr>`);
 }
 
 // testDomain asks the server to fetch the domain's own nostr.json from the
@@ -464,6 +472,7 @@ async function saveDomainRow(tr) {
     enabled: tr.querySelector(".f-enabled").checked,
     price_sats: Number(tr.querySelector(".f-price").value) || 0,
     period_days: Number(tr.querySelector(".f-days").value) || 0,
+    permanent_price_sats: Number(tr.querySelector(".f-permanent-price").value) || 0,
     note: tr.querySelector(".f-note").value,
   });
   loadDomains();

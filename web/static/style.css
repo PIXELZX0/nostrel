@@ -95,7 +95,8 @@ select.lang { flex: 1; padding: 7px 10px; font-size: 13px; }
 .paged > section > h2 { display: none; }
 
 h1 { margin: 0; font-size: 24px; font-weight: 800; }
-.topbar { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+/* page heading, with the relay's address kept in reach on every page */
+.topbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .pill {
   background: var(--surface);
   border: 1px solid var(--border);

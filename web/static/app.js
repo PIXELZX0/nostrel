@@ -48,10 +48,8 @@ async function loadInfo() {
   info = await api("/api/info");
   applyTheme(info);
   document.title = info.name;
-  $("relay-name").textContent = info.name;
   $("brand-name").textContent = info.name;
   $("login-name").textContent = info.name;
-  $("relay-desc").textContent = info.description;
   $("login-desc").textContent = info.description;
   $("relay-url").textContent = info.relay_url || location.origin.replace(/^http/, "ws");
 
@@ -68,8 +66,8 @@ async function loadInfo() {
     const base = (info.blossom_url || location.origin).replace(/\/$/, "");
     $("blossom-url").value = base;
     $("nip96-url").value = base + "/.well-known/nostr/nip96.json";
-    $("sec-blossom").hidden = false;
     $("nav-blossom").hidden = false;
+    route();
   }
 
   $("prices").innerHTML = rows
@@ -79,9 +77,10 @@ async function loadInfo() {
 async function showAccount() {
   if (!pubkey) return;
   const acct = await api("/api/account/" + pubkey);
-  for (const id of ["sec-order", "sec-group", "sec-nip05"]) $(id).hidden = false;
+  for (const id of ["nav-account", "nav-order", "nav-group", "nav-nip05"]) $(id).hidden = false;
   // an invite has to be spent by whoever holds the key, so it needs a signer
-  $("sec-invite").hidden = !signer;
+  $("nav-invite").hidden = !signer;
+  route();
 
   if (!acct.exists) {
     $("account").innerHTML =
@@ -452,19 +451,26 @@ $("pubkey-input").onchange = (e) => {
   }
 };
 
-// The sidebar mirrors the page: highlight whichever card is on screen.
+// One nav entry, one page: the hash picks the single card the main column
+// shows, and the card's own <h2> becomes the page heading (CSS hides the h2).
+// A page nobody can use yet — the account pages before a login, the media page
+// on a relay with storage off — hides its nav entry, and routing skips it, so
+// showing one is a matter of unhiding its link and calling route() again.
 const navLinks = [...document.querySelectorAll('.nav a[href^="#sec-"]')];
-const spy = new IntersectionObserver(
-  (entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      for (const link of navLinks) {
-        link.classList.toggle("active", link.hash === "#" + entry.target.id);
-      }
-    }
-  },
-  { rootMargin: "-10% 0px -80% 0px" });
-for (const link of navLinks) spy.observe($(link.hash.slice(1)));
+const main = document.querySelector(".main");
+
+function route() {
+  const open = navLinks.filter((link) => !link.hidden);
+  const current = open.find((link) => link.hash === location.hash) || open[0];
+  for (const link of navLinks) {
+    link.classList.toggle("active", link === current);
+    $(link.hash.slice(1)).hidden = link !== current;
+  }
+  $("page-title").textContent = $(current.hash.slice(1)).querySelector("h2").textContent;
+  main.scrollTop = 0;
+}
+addEventListener("hashchange", route);
+route();
 
 loadInfo().catch((err) => alert(err.message));
 loadDomains().catch(() => {});
